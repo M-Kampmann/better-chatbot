@@ -10,7 +10,7 @@ environment:
   - PORT=3000
   - POSTGRES_HOST=postgres
   - POSTGRES_PORT=5432
-  - POSTGRES_DB=better_chatbot
+  - POSTGRES_DB=mcp_chat
   # Credentials will be set in Coolify environment variables
   # Connection string for Drizzle
   - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/better_chatbot
