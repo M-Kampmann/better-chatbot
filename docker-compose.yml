@@ -9,6 +9,7 @@ services:
       - '3000:3000'
     environment:
       - NO_HTTPS=1
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mcp_chat}
     env_file:
       - .env.docker # docker .env
       - .env
