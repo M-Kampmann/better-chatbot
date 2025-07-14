@@ -13,7 +13,7 @@ environment:
   - POSTGRES_DB=mcp_chat
   # Credentials will be set in Coolify environment variables
   # Connection string for Drizzle
-  - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/better_chatbot
+  - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mcp_chat
   # App URL will be set in Coolify environment variables
 envFiles:
   - ./.env
