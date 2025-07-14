@@ -26,6 +26,10 @@ services:
     env_file:
       - .env.docker # docker .env
       - .env
+    environment:
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-better_chatbot}
     networks:
       - mcp_client_network
     volumes:
