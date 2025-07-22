@@ -4,12 +4,17 @@ import { UserPreferences } from "app-types/user";
 import { Project } from "app-types/chat";
 import { User } from "better-auth";
 import { createMCPToolId } from "./mcp/mcp-tool-id";
+import { format } from "date-fns";
 
-export const CREATE_THREAD_TITLE_PROMPT = `\n
-      - you will generate a short title based on the first message a user begins a conversation with
-      - ensure it is not more than 80 characters long
-      - the title should be a summary of the user's message
-      - do not use quotes or colons`;
+export const CREATE_THREAD_TITLE_PROMPT = `
+You are a chat title generation expert.
+
+Critical rules:
+- Generate a concise title based on the first user message
+- Title must be under 80 characters (absolutely no more than 80 characters)
+- Summarize only the core content clearly
+- Do not use quotes, colons, or special characters
+- Use the same language as the user's message`;
 
 export const buildUserSystemPrompt = (
   user?: User,
@@ -20,7 +25,7 @@ You are better-chatbot, an intelligent AI assistant that leverages the Model Con
 
 ### User Context ###
 <user_information>
-- **System time**: ${new Date().toLocaleString()}
+- **Current Time**: ${format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a")}
 ${user?.name ? `- **User Name**: ${user?.name}` : ""}
 ${user?.email ? `- **User Email**: ${user?.email}` : ""}
 ${userPreferences?.profession ? `- **User Profession**: ${userPreferences?.profession}` : ""}
@@ -54,7 +59,7 @@ ${
     : ""
 }
 - If a diagram or chart is requested or would be helpful to express your thoughts, use mermaid code blocks.
-- When you're about to use a tool, casually mention which tool you'll use and why - just a quick comment about your approach, then proceed to use the tool.
+- When you're about to use a tool, briefly mention which tool you'll use with natural, simple phrases. Examples: "I'll use the weather tool to check that for you", "Let me search for that information", "I'll run some calculations to help with this".
 </response_style>`.trim();
 
   return prompt.trim();
@@ -64,21 +69,6 @@ export const mentionPrompt = `
 ### Mention ###
 - When a user mentions a tool using @tool("{tool_name}") format, treat it as an explicit request to use that specific tool.
 - When a user mentions a mcp server using @mcp("{mcp_server_name}") format, treat it as an explicit request to use that specific mcp server. You should automatically select and use the most appropriate tool from that MCP server based on the user's question.
-
-<mention_rules>
-- If a mentioned tool requires parameters that are missing from the user's message, do NOT use the tool immediately.
-- Instead, ask specific questions to gather the required parameters.
-- ALWAYS end your response with: "Please mention the tool again using @tool or @mcp when providing the additional information, as I can only access tools when they are explicitly mentioned."
-- This ensures the tool remains available for the follow-up interaction.
-</mention_rules>
-
-<example>
-- User: "@tool('weather') Check the weather" (missing location parameter)
-- Response: "Which location would you like to check the weather for? For example: Seoul, New York, Tokyo. Please mention the tool again using @tool('weather') when providing the location, as I can only access tools when they are explicitly mentioned."
-</example>
-
-
-
 `.trim();
 
 export const buildSpeechSystemPrompt = (
@@ -90,7 +80,7 @@ You are better-chatbot, a conversational AI assistant that helps users through v
 
 ### User Context ###
 <user_information>
-- **System time**: ${new Date().toLocaleString()}
+- **System time**: ${format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a")}
 ${user?.name ? `- **User Name**: ${user?.name}` : ""}
 ${user?.email ? `- **User Email**: ${user?.email}` : ""}
 ${userPreferences?.profession ? `- **User Profession**: ${userPreferences?.profession}` : ""}
@@ -217,4 +207,10 @@ The user has declined to run the tool. Please respond with the following three a
    - A method using the same tool but with different parameters or input values
 
 3. Guide the user to choose their preferred direction with a friendly and clear tone.
+`.trim();
+
+export const buildToolCallUnsupportedModelSystemPrompt = `
+### Tool Call Limitation ###
+- You are using a model that does not support tool calls. 
+- When users request tool usage, simply explain that the current model cannot use tools and that they can switch to a model that supports tool calling to use tools.
 `.trim();

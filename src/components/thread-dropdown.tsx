@@ -65,7 +65,7 @@ export function ThreadDropdown({
         }
       })
       .ifOk(() => updateThreadAction(threadId, { title }))
-      .ifOk(() => mutate("threads"))
+      .ifOk(() => mutate("/api/thread/list"))
       .watch(({ isOk, error }) => {
         if (isOk) {
           toast.success(t("threadUpdated"));
@@ -93,7 +93,7 @@ export function ThreadDropdown({
         if (currentThreadId === threadId) {
           push.current("/");
         }
-        mutate("threads");
+        mutate("/api/thread/list");
       })
       .unwrap();
   };
@@ -103,10 +103,10 @@ export function ThreadDropdown({
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent className=" p-0 w-[220px]" side={side} align={align}>
         <Command>
-          <div className="flex items-center gap-2 px-2 py-1 text-sm pt-2 font-semibold">
+          <div className="flex items-center gap-2 px-2 py-1 text-xs pt-2 text-muted-foreground ml-1">
             {t("chat")}
           </div>
-          <CommandSeparator />
+
           <CommandList>
             <CommandGroup>
               <CommandItem className="cursor-pointer">

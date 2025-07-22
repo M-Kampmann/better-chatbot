@@ -9,28 +9,17 @@ import {
   ChevronDownIcon,
   RefreshCw,
   X,
-  Wrench,
   Trash2,
   ChevronRight,
   TriangleAlert,
-  XIcon,
-  Loader2,
-  AlertTriangleIcon,
+  HammerIcon,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { Button } from "ui/button";
 import { Markdown } from "./markdown";
-import { cn, safeJSONParse } from "lib/utils";
+import { cn, createThrottle, safeJSONParse } from "lib/utils";
 import JsonView from "ui/json-view";
-import {
-  useMemo,
-  useState,
-  memo,
-  useEffect,
-  useRef,
-  Suspense,
-  useCallback,
-} from "react";
+import { useMemo, useState, memo, useEffect, useRef, useCallback } from "react";
 import { MessageEditor } from "./message-editor";
 import type { UseChatHelpers } from "@ai-sdk/react";
 import { useCopy } from "@/hooks/use-copy";
@@ -45,42 +34,27 @@ import {
 import { toast } from "sonner";
 import { safe } from "ts-safe";
 import {
-  ChatMentionSchema,
-  ChatMessageAnnotation,
   ChatModel,
+  ClientToolInvocation,
+  ToolInvocationUIPart,
 } from "app-types/chat";
 
-import { Skeleton } from "ui/skeleton";
-import { PieChart } from "./tool-invocation/pie-chart";
-import { BarChart } from "./tool-invocation/bar-chart";
-import { LineChart } from "./tool-invocation/line-chart";
 import { useTranslations } from "next-intl";
 import { extractMCPToolId } from "lib/ai/mcp/mcp-tool-id";
 import { Separator } from "ui/separator";
-import { ChatMentionInputMentionItem } from "./chat-mention-input";
+
 import { TextShimmer } from "ui/text-shimmer";
 import equal from "lib/equal";
-import {
-  isVercelAIWorkflowTool,
-  VercelAIWorkflowToolStreamingResult,
-} from "app-types/workflow";
-import { NodeIcon } from "./workflow/node-icon";
-import { NodeResultPopup } from "./workflow/node-result-popup";
-
-import { Alert, AlertDescription, AlertTitle } from "ui/alert";
+import { isVercelAIWorkflowTool } from "app-types/workflow";
 import { Avatar, AvatarFallback, AvatarImage } from "ui/avatar";
-import { GlobalIcon } from "ui/global-icon";
-
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "ui/hover-card";
-import { notify } from "lib/notify";
 import { DefaultToolName } from "lib/ai/tools";
-import { TavilyResponse } from "lib/ai/tools/web/web-search";
+
+import { WorkflowInvocation } from "./tool-invocation/workflow-invocation";
+import dynamic from "next/dynamic";
 
 type MessagePart = UIMessage["parts"][number];
-
 type TextMessagePart = Extract<MessagePart, { type: "text" }>;
 type AssistMessagePart = Extract<MessagePart, { type: "text" }>;
-type ToolMessagePart = Extract<MessagePart, { type: "tool-invocation" }>;
 
 interface UserMessagePartProps {
   part: TextMessagePart;
@@ -94,6 +68,8 @@ interface UserMessagePartProps {
 
 interface AssistMessagePartProps {
   part: AssistMessagePart;
+  isLast: boolean;
+  isLoading: boolean;
   message: UIMessage;
   showActions: boolean;
   threadId?: string;
@@ -103,158 +79,157 @@ interface AssistMessagePartProps {
 }
 
 interface ToolMessagePartProps {
-  part: ToolMessagePart;
+  part: ToolInvocationUIPart;
   messageId: string;
   showActions: boolean;
   isLast?: boolean;
-  onPoxyToolCall?: (answer: boolean) => void;
+  isManualToolInvocation?: boolean;
+  onPoxyToolCall?: (result: ClientToolInvocation) => void;
   isError?: boolean;
   setMessages?: UseChatHelpers["setMessages"];
 }
 
-export const UserMessagePart = memo(function UserMessagePart({
-  part,
-  isLast,
-  status,
-  message,
-  setMessages,
-  reload,
-  isError,
-}: UserMessagePartProps) {
-  const { copied, copy } = useCopy();
-  const [mode, setMode] = useState<"view" | "edit">("view");
-  const [isDeleting, setIsDeleting] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  const mentions = useMemo(() => {
-    return (message.annotations ?? [])
-      .flatMap((annotation) => {
-        return (annotation as ChatMessageAnnotation).mentions ?? [];
-      })
-      .filter((mention) => {
-        return ChatMentionSchema.safeParse(mention).success;
-      });
-  }, [message.annotations]);
+export const UserMessagePart = memo(
+  function UserMessagePart({
+    part,
+    isLast,
+    status,
+    message,
+    setMessages,
+    reload,
+    isError,
+  }: UserMessagePartProps) {
+    const { copied, copy } = useCopy();
+    const [mode, setMode] = useState<"view" | "edit">("view");
+    const [isDeleting, setIsDeleting] = useState(false);
+    const ref = useRef<HTMLDivElement>(null);
+    const scrolledRef = useRef(false);
 
-  const deleteMessage = useCallback(() => {
-    safe(() => setIsDeleting(true))
-      .ifOk(() => deleteMessageAction(message.id))
-      .ifOk(() =>
-        setMessages((messages) => {
-          const index = messages.findIndex((m) => m.id === message.id);
-          if (index !== -1) {
-            return messages.filter((_, i) => i !== index);
-          }
-          return messages;
-        }),
-      )
-      .ifFail((error) => toast.error(error.message))
-      .watch(() => setIsDeleting(false))
-      .unwrap();
-  }, [message.id]);
+    const deleteMessage = useCallback(() => {
+      safe(() => setIsDeleting(true))
+        .ifOk(() => deleteMessageAction(message.id))
+        .ifOk(() =>
+          setMessages((messages) => {
+            const index = messages.findIndex((m) => m.id === message.id);
+            if (index !== -1) {
+              return messages.filter((_, i) => i !== index);
+            }
+            return messages;
+          }),
+        )
+        .ifFail((error) => toast.error(error.message))
+        .watch(() => setIsDeleting(false))
+        .unwrap();
+    }, [message.id]);
 
-  useEffect(() => {
-    if (status === "submitted" && isLast) {
-      ref.current?.scrollIntoView({ behavior: "smooth" });
+    useEffect(() => {
+      if (status === "submitted" && isLast && !scrolledRef.current) {
+        scrolledRef.current = true;
+
+        ref.current?.scrollIntoView({ behavior: "smooth" });
+      }
+    }, [status]);
+
+    if (mode === "edit") {
+      return (
+        <div className="flex flex-row gap-2 items-start w-full">
+          <MessageEditor
+            message={message}
+            setMode={setMode}
+            setMessages={setMessages}
+            reload={reload}
+          />
+        </div>
+      );
     }
-  }, [status]);
 
-  if (mode === "edit") {
     return (
-      <div className="flex flex-row gap-2 items-start w-full">
-        <MessageEditor
-          message={message}
-          setMode={setMode}
-          setMessages={setMessages}
-          reload={reload}
-        />
+      <div className="flex flex-col gap-2 items-end my-2">
+        <div
+          data-testid="message-content"
+          className={cn(
+            "flex flex-col gap-4 max-w-full ring ring-input",
+            {
+              "bg-accent text-accent-foreground px-4 py-3 rounded-2xl": isLast,
+              "opacity-50": isError,
+            },
+            isError && "border-destructive border",
+          )}
+        >
+          <p className={cn("whitespace-pre-wrap text-sm break-words")}>
+            {part.text}
+          </p>
+        </div>
+        {isLast && (
+          <div className="flex w-full justify-end opacity-0 group-hover/message:opacity-100 transition-opacity duration-300">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="message-edit-button"
+                  variant="ghost"
+                  size="icon"
+                  className={cn("size-3! p-4!")}
+                  onClick={() => copy(part.text)}
+                >
+                  {copied ? <Check /> : <Copy />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Copy</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  data-testid="message-edit-button"
+                  variant="ghost"
+                  size="icon"
+                  className="size-3! p-4!"
+                  onClick={() => setMode("edit")}
+                >
+                  <Pencil />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">Edit</TooltipContent>
+            </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  disabled={isDeleting}
+                  onClick={deleteMessage}
+                  variant="ghost"
+                  size="icon"
+                  className="size-3! p-4! hover:text-destructive"
+                >
+                  {isDeleting ? (
+                    <Loader className="animate-spin" />
+                  ) : (
+                    <Trash2 />
+                  )}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent className="text-destructive" side="bottom">
+                Delete Message
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        )}
+        <div ref={ref} className="min-w-0" />
       </div>
     );
-  }
-
-  return (
-    <div className="flex flex-col gap-2 items-end my-2">
-      <div
-        data-testid="message-content"
-        className={cn(
-          "flex flex-col gap-4 max-w-full",
-          {
-            "bg-accent text-accent-foreground px-4 py-3 rounded-2xl": isLast,
-            "opacity-50": isError,
-          },
-          isError && "border-destructive border",
-        )}
-      >
-        <p className={cn("whitespace-pre-wrap text-sm break-words")}>
-          {part.text}
-        </p>
-      </div>
-      {isLast && mentions.length > 0 && (
-        <div className="flex items-center gap-2 flex-wrap">
-          {mentions.map((mention, i) => {
-            return (
-              <ChatMentionInputMentionItem
-                key={i}
-                id={JSON.stringify(mention)}
-                className="mx-0"
-              />
-            );
-          })}
-        </div>
-      )}
-      {isLast && (
-        <div className="flex w-full justify-end opacity-0 group-hover/message:opacity-100 transition-opacity duration-300">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                data-testid="message-edit-button"
-                variant="ghost"
-                size="icon"
-                className={cn("size-3! p-4!")}
-                onClick={() => copy(part.text)}
-              >
-                {copied ? <Check /> : <Copy />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Copy</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                data-testid="message-edit-button"
-                variant="ghost"
-                size="icon"
-                className="size-3! p-4!"
-                onClick={() => setMode("edit")}
-              >
-                <Pencil />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">Edit</TooltipContent>
-          </Tooltip>
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                disabled={isDeleting}
-                onClick={deleteMessage}
-                variant="ghost"
-                size="icon"
-                className="size-3! p-4! hover:text-destructive"
-              >
-                {isDeleting ? <Loader className="animate-spin" /> : <Trash2 />}
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent className="text-destructive" side="bottom">
-              Delete Message
-            </TooltipContent>
-          </Tooltip>
-        </div>
-      )}
-      <div ref={ref} className="min-w-0" />
-    </div>
-  );
-});
+  },
+  (prev, next) => {
+    if (prev.part.text != next.part.text) return false;
+    if (prev.isError != next.isError) return false;
+    if (prev.isLast != next.isLast) return false;
+    if (prev.status != next.status) return false;
+    if (prev.message.id != next.message.id) return false;
+    if (!equal(prev.part, next.part)) return false;
+    return true;
+  },
+);
 UserMessagePart.displayName = "UserMessagePart";
+
+const throttle = createThrottle();
 
 export const AssistMessagePart = memo(function AssistMessagePart({
   part,
@@ -262,12 +237,17 @@ export const AssistMessagePart = memo(function AssistMessagePart({
   reload,
   message,
   setMessages,
+  isLast,
+  isLoading: isChatLoading,
   isError,
   threadId,
 }: AssistMessagePartProps) {
   const { copied, copy } = useCopy();
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const [shouldAutoScroll, setShouldAutoScroll] = useState(true);
 
   const deleteMessage = useCallback(() => {
     safe(() => setIsDeleting(true))
@@ -306,7 +286,6 @@ export const AssistMessagePart = memo(function AssistMessagePart({
         reload({
           body: {
             model,
-            action: "update-assistant",
             id: threadId,
           },
         }),
@@ -316,10 +295,43 @@ export const AssistMessagePart = memo(function AssistMessagePart({
       .unwrap();
   };
 
+  useEffect(() => {
+    // Only auto-scroll for the last message when AI is actively writing
+    if (isLast && isChatLoading && shouldAutoScroll && isAtBottom) {
+      throttle(() => {
+        ref.current?.scrollIntoView({ behavior: "smooth" });
+      }, 400);
+    }
+  }, [isLast, isChatLoading, shouldAutoScroll, isAtBottom, part.text]);
+
+  useEffect(() => {
+    // Only set up observer for the last message during loading
+    if (!ref.current || !isLast || !isChatLoading) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsAtBottom(entry.isIntersecting);
+
+        // If user scrolled back to bottom, re-enable auto scroll
+        if (entry.isIntersecting && !shouldAutoScroll) {
+          setShouldAutoScroll(true);
+        }
+      },
+      {
+        root: null,
+        threshold: 0.3,
+      },
+    );
+
+    observer.observe(ref.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [isLast, isChatLoading, shouldAutoScroll]);
+
   return (
-    <div
-      className={cn(isLoading && "animate-pulse", "flex flex-col gap-2 group")}
-    >
+    <div className={cn(isLoading && "animate-pulse", "flex flex-col gap-2")}>
       <div
         data-testid="message-content"
         className={cn("flex flex-col gap-4 px-2", {
@@ -329,16 +341,14 @@ export const AssistMessagePart = memo(function AssistMessagePart({
         <Markdown>{part.text}</Markdown>
       </div>
       {showActions && (
-        <div className="flex w-full ">
+        <div className="flex w-full">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 data-testid="message-edit-button"
                 variant="ghost"
                 size="icon"
-                className={cn(
-                  "size-3! p-4! opacity-0 group-hover/message:opacity-100",
-                )}
+                className="size-3! p-4!"
                 onClick={() => copy(part.text)}
               >
                 {copied ? <Check /> : <Copy />}
@@ -351,12 +361,10 @@ export const AssistMessagePart = memo(function AssistMessagePart({
               <div>
                 <SelectModel onSelect={handleModelChange}>
                   <Button
-                    data-testid="message-edit-button"
+                    data-testid="message-edit-button data-[state=open]:bg-secondary!"
                     variant="ghost"
                     size="icon"
-                    className={cn(
-                      "size-3! p-4! opacity-0 group-hover/message:opacity-100",
-                    )}
+                    className="size-3! p-4!"
                   >
                     {<RefreshCw />}
                   </Button>
@@ -372,7 +380,7 @@ export const AssistMessagePart = memo(function AssistMessagePart({
                 size="icon"
                 disabled={isDeleting}
                 onClick={deleteMessage}
-                className="size-3! p-4! opacity-0 group-hover/message:opacity-100 hover:text-destructive"
+                className="size-3! p-4! hover:text-destructive"
               >
                 {isDeleting ? <Loader className="animate-spin" /> : <Trash2 />}
               </Button>
@@ -383,10 +391,140 @@ export const AssistMessagePart = memo(function AssistMessagePart({
           </Tooltip>
         </div>
       )}
+      <div ref={ref} className="min-w-0" />
     </div>
   );
 });
 AssistMessagePart.displayName = "AssistMessagePart";
+
+export const ReasoningPart = memo(function ReasoningPart({
+  reasoning,
+  isThinking,
+}: {
+  reasoning: string;
+  isThinking?: boolean;
+}) {
+  const [isExpanded, setIsExpanded] = useState(isThinking);
+
+  const variants = {
+    collapsed: {
+      height: 0,
+      opacity: 0,
+      marginTop: 0,
+      marginBottom: 0,
+    },
+    expanded: {
+      height: "auto",
+      opacity: 1,
+      marginTop: "1rem",
+      marginBottom: "0.5rem",
+    },
+  };
+
+  useEffect(() => {
+    if (!isThinking && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [isThinking]);
+
+  return (
+    <div
+      className="flex flex-col cursor-pointer"
+      onClick={() => {
+        setIsExpanded(!isExpanded);
+      }}
+    >
+      <div className="flex flex-row gap-2 items-center text-ring hover:text-primary transition-colors">
+        {isThinking ? (
+          <TextShimmer>Reasoned for a few seconds</TextShimmer>
+        ) : (
+          <div className="font-medium">Reasoned for a few seconds</div>
+        )}
+
+        <button
+          data-testid="message-reasoning-toggle"
+          type="button"
+          className="cursor-pointer"
+        >
+          <ChevronDownIcon size={16} />
+        </button>
+      </div>
+
+      <div className="pl-4">
+        <AnimatePresence initial={false}>
+          {isExpanded && (
+            <motion.div
+              data-testid="message-reasoning"
+              key="content"
+              initial="collapsed"
+              animate="expanded"
+              exit="collapsed"
+              variants={variants}
+              transition={{ duration: 0.2, ease: "easeInOut" }}
+              style={{ overflow: "hidden" }}
+              className="pl-6 text-muted-foreground border-l flex flex-col gap-4"
+            >
+              <Markdown>{reasoning}</Markdown>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  );
+});
+ReasoningPart.displayName = "ReasoningPart";
+
+const loading = memo(function Loading() {
+  return (
+    <div className="px-6 py-4">
+      <div className="h-44 w-full rounded-md opacity-0" />
+    </div>
+  );
+});
+
+const PieChart = dynamic(
+  () => import("./tool-invocation/pie-chart").then((mod) => mod.PieChart),
+  {
+    ssr: false,
+    loading,
+  },
+);
+
+const BarChart = dynamic(
+  () => import("./tool-invocation/bar-chart").then((mod) => mod.BarChart),
+  {
+    ssr: false,
+    loading,
+  },
+);
+
+const LineChart = dynamic(
+  () => import("./tool-invocation/line-chart").then((mod) => mod.LineChart),
+  {
+    ssr: false,
+    loading,
+  },
+);
+
+const WebSearchToolInvocation = dynamic(
+  () =>
+    import("./tool-invocation/web-search").then(
+      (mod) => mod.WebSearchToolInvocation,
+    ),
+  {
+    ssr: false,
+    loading,
+  },
+);
+
+const CodeExecutor = dynamic(
+  () =>
+    import("./tool-invocation/code-executor").then((mod) => mod.CodeExecutor),
+  {
+    ssr: false,
+    loading,
+  },
+);
 
 export const ToolMessagePart = memo(
   ({
@@ -397,6 +535,7 @@ export const ToolMessagePart = memo(
     isError,
     messageId,
     setMessages,
+    isManualToolInvocation,
   }: ToolMessagePartProps) => {
     const t = useTranslations("");
     const { toolInvocation } = part;
@@ -421,15 +560,28 @@ export const ToolMessagePart = memo(
         .ifFail((error) => toast.error(error.message))
         .watch(() => setIsDeleting(false))
         .unwrap();
-    }, [messageId, setMessages]);
+    }, [messageId]);
+    const onToolCallDirect = useMemo(
+      () =>
+        onPoxyToolCall
+          ? (result: any) => {
+              return onPoxyToolCall({
+                action: "direct",
+                result,
+              });
+            }
+          : undefined,
+      [onPoxyToolCall],
+    );
 
     const result = useMemo(() => {
       if (state === "result") {
-        return toolInvocation.result?.content
+        return Array.isArray(toolInvocation.result?.content)
           ? {
               ...toolInvocation.result,
               content: toolInvocation.result.content.map((node) => {
-                if (node.type === "text") {
+                // mcp tools
+                if (node?.type === "text" && typeof node?.text === "string") {
                   const parsed = safeJSONParse(node.text);
                   return {
                     ...node,
@@ -442,57 +594,59 @@ export const ToolMessagePart = memo(
           : toolInvocation.result;
       }
       return null;
-    }, [state, toolInvocation]);
+    }, [state, (toolInvocation as any).result]);
 
     const CustomToolComponent = useMemo(() => {
       if (
         toolName === DefaultToolName.WebSearch ||
         toolName === DefaultToolName.WebContent
       ) {
-        return <SearchToolPart part={toolInvocation} />;
+        return <WebSearchToolInvocation part={toolInvocation} />;
+      }
+
+      if (toolName === DefaultToolName.JavascriptExecution) {
+        return (
+          <CodeExecutor
+            part={toolInvocation}
+            onResult={onToolCallDirect}
+            type="javascript"
+          />
+        );
+      }
+
+      if (toolName === DefaultToolName.PythonExecution) {
+        return (
+          <CodeExecutor
+            part={toolInvocation}
+            onResult={onToolCallDirect}
+            type="python"
+          />
+        );
       }
 
       if (state === "result") {
         switch (toolName) {
           case DefaultToolName.CreatePieChart:
             return (
-              <Suspense
-                fallback={<Skeleton className="h-64 w-full rounded-md" />}
-              >
-                <PieChart
-                  key={`${toolCallId}-${toolName}`}
-                  {...(args as any)}
-                />
-              </Suspense>
+              <PieChart key={`${toolCallId}-${toolName}`} {...(args as any)} />
             );
           case DefaultToolName.CreateBarChart:
             return (
-              <Suspense
-                fallback={<Skeleton className="h-64 w-full rounded-md" />}
-              >
-                <BarChart
-                  key={`${toolCallId}-${toolName}`}
-                  {...(args as any)}
-                />
-              </Suspense>
+              <BarChart key={`${toolCallId}-${toolName}`} {...(args as any)} />
             );
           case DefaultToolName.CreateLineChart:
             return (
-              <Suspense
-                fallback={<Skeleton className="h-64 w-full rounded-md" />}
-              >
-                <LineChart
-                  key={`${toolCallId}-${toolName}`}
-                  {...(args as any)}
-                />
-              </Suspense>
+              <LineChart key={`${toolCallId}-${toolName}`} {...(args as any)} />
             );
         }
       }
       return null;
-    }, [toolName, state]);
+    }, [toolName, state, onToolCallDirect, result, args]);
 
-    const isWorkflowTool = isVercelAIWorkflowTool(result);
+    const isWorkflowTool = useMemo(
+      () => isVercelAIWorkflowTool(result),
+      [result],
+    );
 
     const { serverName: mcpServerName, toolName: mcpToolName } = useMemo(() => {
       return extractMCPToolId(toolName);
@@ -508,7 +662,7 @@ export const ToolMessagePart = memo(
     }, [isWorkflowTool, result, state, isLast, !!onPoxyToolCall]);
 
     return (
-      <div key={toolCallId} className="group w-full">
+      <div className="group w-full">
         {CustomToolComponent ? (
           CustomToolComponent
         ) : (
@@ -530,7 +684,7 @@ export const ToolMessagePart = memo(
                     </AvatarFallback>
                   </Avatar>
                 ) : (
-                  <Wrench className="size-3.5" />
+                  <HammerIcon className="size-3.5" />
                 )}
               </div>
               <span className="font-bold flex items-center gap-2">
@@ -589,7 +743,7 @@ export const ToolMessagePart = memo(
                           copyInput(JSON.stringify(toolInvocation.args))
                         }
                       >
-                        <Copy />
+                        <Copy className="size-3" />
                       </Button>
                     )}
                   </div>
@@ -600,7 +754,7 @@ export const ToolMessagePart = memo(
                   )}
                 </div>
                 {!result ? null : isWorkflowTool ? (
-                  <WorkflowToolDetail result={result} />
+                  <WorkflowInvocation result={result} />
                 ) : (
                   <div
                     className={cn(
@@ -627,7 +781,7 @@ export const ToolMessagePart = memo(
                           className="size-3 text-muted-foreground"
                           onClick={() => copyOutput(JSON.stringify(result))}
                         >
-                          <Copy />
+                          <Copy className="size-3" />
                         </Button>
                       )}
                     </div>
@@ -639,13 +793,15 @@ export const ToolMessagePart = memo(
                   </div>
                 )}
 
-                {onPoxyToolCall && (
+                {onPoxyToolCall && isManualToolInvocation && isLast && (
                   <div className="flex flex-row gap-2 items-center mt-2">
                     <Button
                       variant="secondary"
                       size="sm"
                       className="rounded-full text-xs hover:ring"
-                      onClick={() => onPoxyToolCall(true)}
+                      onClick={() =>
+                        onPoxyToolCall({ action: "manual", result: true })
+                      }
                     >
                       <Check />
                       {t("Common.approve")}
@@ -654,7 +810,9 @@ export const ToolMessagePart = memo(
                       variant="outline"
                       size="sm"
                       className="rounded-full text-xs"
-                      onClick={() => onPoxyToolCall(false)}
+                      onClick={() =>
+                        onPoxyToolCall({ action: "manual", result: false })
+                      }
                     >
                       <X />
                       {t("Common.reject")}
@@ -696,8 +854,10 @@ export const ToolMessagePart = memo(
   (prev, next) => {
     if (prev.isError !== next.isError) return false;
     if (prev.isLast !== next.isLast) return false;
+    if (prev.onPoxyToolCall !== next.onPoxyToolCall) return false;
     if (prev.showActions !== next.showActions) return false;
-    if (!!prev.onPoxyToolCall !== !!next.onPoxyToolCall) return false;
+    if (prev.isManualToolInvocation !== next.isManualToolInvocation)
+      return false;
     if (prev.messageId !== next.messageId) return false;
     if (!equal(prev.part.toolInvocation, next.part.toolInvocation))
       return false;
@@ -706,363 +866,3 @@ export const ToolMessagePart = memo(
 );
 
 ToolMessagePart.displayName = "ToolMessagePart";
-
-function SearchToolPart({ part }: { part: ToolMessagePart["toolInvocation"] }) {
-  const t = useTranslations();
-
-  const result = useMemo(() => {
-    if (part.state != "result") return null;
-    return part.result as TavilyResponse & { isError: boolean; error?: string };
-  }, [part.state]);
-  const [errorSrc, setErrorSrc] = useState<string[]>([]);
-
-  const options = useMemo(() => {
-    return (
-      <HoverCard openDelay={200} closeDelay={0}>
-        <HoverCardTrigger asChild>
-          <span className="hover:text-primary transition-colors text-xs text-muted-foreground">
-            {t("Chat.Tool.searchOptions")}
-          </span>
-        </HoverCardTrigger>
-        <HoverCardContent className="max-w-xs md:max-w-md! w-full! overflow-auto flex flex-col">
-          <p className="text-xs text-muted-foreground px-2 mb-2">
-            {t("Chat.Tool.searchOptionsDescription")}
-          </p>
-          <div className="p-2">
-            <JsonView data={part.args} />
-          </div>
-        </HoverCardContent>
-      </HoverCard>
-    );
-  }, [part.args]);
-
-  const onError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
-    const target = e.currentTarget;
-    if (errorSrc.includes(target.src)) return;
-    setErrorSrc([...errorSrc, target.src]);
-  };
-
-  const images = useMemo(() => {
-    return (
-      result?.images?.filter((image) => !errorSrc.includes(image.url)) ?? []
-    );
-  }, [result?.images, errorSrc]);
-
-  if (part.state != "result")
-    return (
-      <div className="flex items-center gap-2 text-sm">
-        <GlobalIcon className="size-5 wiggle text-muted-foreground" />
-        <TextShimmer>{t("Chat.Tool.webSearching")}</TextShimmer>
-      </div>
-    );
-  return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <GlobalIcon className="size-5 text-muted-foreground" />
-        <span className="text-sm font-semibold">
-          {t("Chat.Tool.searchedTheWeb")}
-        </span>
-        {options}
-      </div>
-      <div className="flex gap-2">
-        <div className="px-2.5">
-          <Separator
-            orientation="vertical"
-            className="bg-gradient-to-b from-border to-transparent from-80%"
-          />
-        </div>
-        <div className="flex flex-col gap-2 pb-2">
-          {images?.length && (
-            <div className="grid grid-cols-3 gap-3 max-w-2xl">
-              {images.map((image, i) => {
-                if (!image.url) return null;
-                return (
-                  <Tooltip key={i}>
-                    <TooltipTrigger asChild>
-                      <div
-                        key={image.url}
-                        onClick={() => {
-                          notify.component({
-                            className: "max-w-[90vw]! max-h-[90vh]! p-6!",
-                            children: (
-                              <div className="flex flex-col h-full gap-4">
-                                <div className="flex-1 flex items-center justify-center min-h-0 py-6">
-                                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                                  <img
-                                    src={image.url}
-                                    className="max-w-[80vw] max-h-[80vh] object-contain rounded-lg"
-                                    alt={image.description}
-                                    onError={onError}
-                                  />
-                                </div>
-                              </div>
-                            ),
-                          });
-                        }}
-                        className="block shadow rounded-lg overflow-hidden ring ring-input cursor-pointer"
-                      >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                          loading="lazy"
-                          src={image.url}
-                          alt={image.description}
-                          className="w-full h-36 object-cover hover:scale-120 transition-transform duration-300"
-                          onError={onError}
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent className="p-4 max-w-xs whitespace-pre-wrap break-words">
-                      <p className="text-xs text-muted-foreground">
-                        {image.description || image.url}
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-1">
-            {result?.isError ? (
-              <p className="text-xs text-muted-foreground flex items-center gap-1">
-                <AlertTriangleIcon className="size-3.5" />
-                {result.error || "Error"}
-              </p>
-            ) : (
-              (result as TavilyResponse)?.results?.map((result, i) => {
-                return (
-                  <HoverCard key={i} openDelay={200} closeDelay={0}>
-                    <HoverCardTrigger asChild>
-                      <a
-                        href={result.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="group rounded-full bg-secondary pl-1.5 pr-2 py-1.5 text-xs flex items-center gap-1 hover:bg-input hover:ring hover:ring-blue-500 transition-all cursor-pointer"
-                      >
-                        <div className="rounded-full bg-input ring ring-input">
-                          <Avatar className="size-3 rounded-full">
-                            <AvatarImage src={result.favicon} />
-                            <AvatarFallback>
-                              {result.title?.slice(0, 1).toUpperCase() || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <span className="truncate max-w-44">{result.url}</span>
-                      </a>
-                    </HoverCardTrigger>
-
-                    <HoverCardContent className="flex flex-col gap-1 p-6">
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-full ring ring-input">
-                          <Avatar className="size-6 rounded-full">
-                            <AvatarImage src={result.favicon} />
-                            <AvatarFallback>
-                              {result.title?.slice(0, 1).toUpperCase() || "?"}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                        <span
-                          className={cn(
-                            "font-medium",
-                            !result.title && "truncate",
-                          )}
-                        >
-                          {result.title || result.url}
-                        </span>
-                      </div>
-                      <div className="flex flex-col gap-2 mt-4">
-                        <div className="relative">
-                          <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent to-card from-80% " />
-                          <p className="text-xs text-muted-foreground max-h-60 overflow-y-auto">
-                            {result.content || result.raw_content}
-                          </p>
-                        </div>
-                      </div>
-                    </HoverCardContent>
-                  </HoverCard>
-                );
-              })
-            )}
-          </div>
-          {result?.results?.length && (
-            <p className="text-xs text-muted-foreground ml-1 flex items-center gap-1">
-              {t("Common.resultsFound", {
-                count: result?.results?.length,
-              })}
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export const ReasoningPart = memo(function ReasoningPart({
-  reasoning,
-}: {
-  reasoning: string;
-  isThinking?: boolean;
-}) {
-  const [isExpanded, setIsExpanded] = useState(false);
-
-  const variants = {
-    collapsed: {
-      height: 0,
-      opacity: 0,
-      marginTop: 0,
-      marginBottom: 0,
-    },
-    expanded: {
-      height: "auto",
-      opacity: 1,
-      marginTop: "1rem",
-      marginBottom: "0.5rem",
-    },
-  };
-
-  return (
-    <div
-      className="flex flex-col cursor-pointer"
-      onClick={() => {
-        setIsExpanded(!isExpanded);
-      }}
-    >
-      <div className="flex flex-row gap-2 items-center text-ring hover:text-primary transition-colors">
-        <div className="font-medium">Reasoned for a few seconds</div>
-        <button
-          data-testid="message-reasoning-toggle"
-          type="button"
-          className="cursor-pointer"
-        >
-          <ChevronDownIcon size={16} />
-        </button>
-      </div>
-
-      <div className="pl-4">
-        <AnimatePresence initial={false}>
-          {isExpanded && (
-            <motion.div
-              data-testid="message-reasoning"
-              key="content"
-              initial="collapsed"
-              animate="expanded"
-              exit="collapsed"
-              variants={variants}
-              transition={{ duration: 0.2, ease: "easeInOut" }}
-              style={{ overflow: "hidden" }}
-              className="pl-6 text-muted-foreground border-l flex flex-col gap-4"
-            >
-              <Markdown>{reasoning}</Markdown>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-    </div>
-  );
-});
-ReasoningPart.displayName = "ReasoningPart";
-
-export function WorkflowToolDetail({
-  result,
-}: { result: VercelAIWorkflowToolStreamingResult }) {
-  const { copied, copy } = useCopy();
-  const savedResult = useRef<VercelAIWorkflowToolStreamingResult>(result);
-  const output = useMemo(() => {
-    if (result.status == "running") return null;
-    if (result.status == "fail")
-      return (
-        <Alert variant={"destructive"} className="border-destructive">
-          <AlertTriangleIcon />
-          <AlertTitle>{result?.error?.name || "ERROR"}</AlertTitle>
-          <AlertDescription>{result.error?.message}</AlertDescription>
-        </Alert>
-      );
-    if (!result.result) return null;
-
-    return (
-      <div className="w-full max-h-96 overflow-y-auto bg-card p-4 border text-xs transition-colors fade-300 rounded-lg ">
-        <div className="flex justify-end">
-          <Button
-            variant={"ghost"}
-            size={"icon"}
-            onClick={() => copy(JSON.stringify(result.result))}
-          >
-            {copied ? (
-              <Check className="size-3" />
-            ) : (
-              <Copy className="size-3" />
-            )}
-          </Button>
-        </div>
-        <JsonView data={result.result} />
-      </div>
-    );
-  }, [result.status, result.error, result.result, copied]);
-  useEffect(() => {
-    if (result.status == "running") {
-      savedResult.current = result;
-    }
-  }, [result]);
-
-  return (
-    <div className="w-full flex flex-col gap-1">
-      {result.history.map((item, i) => {
-        const result = item.result || savedResult.current.history[i]?.result;
-        return (
-          <NodeResultPopup
-            key={item.id}
-            disabled={!result}
-            history={{
-              name: item.name,
-              status: item.status,
-              startedAt: item.startedAt,
-              endedAt: item.endedAt,
-              error: item.error?.message,
-              result,
-            }}
-          >
-            <div
-              key={item.id}
-              className={cn(
-                "flex items-center gap-2 text-sm rounded-sm px-2 py-1.5 relative",
-                item.status == "fail" && "text-destructive",
-                !!result && "cursor-pointer hover:bg-secondary",
-              )}
-            >
-              <div className="border rounded overflow-hidden">
-                <NodeIcon
-                  type={item.kind}
-                  iconClassName="size-3"
-                  className="rounded-none"
-                />
-              </div>
-              {item.status == "running" ? (
-                <TextShimmer className="font-semibold">
-                  {`${item.name} Running...`}
-                </TextShimmer>
-              ) : (
-                <span className="font-semibold">{item.name}</span>
-              )}
-              <span
-                className={cn(
-                  "ml-auto text-xs",
-                  item.status != "fail" && "text-muted-foreground",
-                )}
-              >
-                {item.status != "running" &&
-                  ((item.endedAt! - item.startedAt!) / 1000).toFixed(2)}
-              </span>
-              {item.status == "success" ? (
-                <Check className="size-3" />
-              ) : item.status == "fail" ? (
-                <XIcon className="size-3" />
-              ) : (
-                <Loader2 className="size-3 animate-spin" />
-              )}
-            </div>
-          </NodeResultPopup>
-        );
-      })}
-      <div className="px-2 mt-2">{output}</div>
-    </div>
-  );
-}

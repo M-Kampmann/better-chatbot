@@ -13,10 +13,10 @@ import {
   ChatMention,
   ChatMessage,
   ChatMessageAnnotation,
+  ClientToolInvocationZodSchema,
   ToolInvocationUIPart,
 } from "app-types/chat";
 import { errorToString, objectFlow, toAny } from "lib/utils";
-import { callMcpToolAction } from "../mcp/actions";
 import logger from "logger";
 import {
   AllowedMCPServer,
@@ -36,6 +36,7 @@ import {
 } from "app-types/workflow";
 import { createWorkflowExecutor } from "lib/ai/workflow/executor/workflow-executor";
 import { NodeKind } from "lib/ai/workflow/workflow.interface";
+import { mcpClientsManager } from "lib/ai/mcp/mcp-manager";
 
 export function filterMCPToolsByMentions(
   tools: Record<string, VercelAIMcpTool>,
@@ -45,7 +46,7 @@ export function filterMCPToolsByMentions(
     return tools;
   }
   const toolMentions = mentions.filter(
-    (mention) => mention.type == "tool" || mention.type == "mcpServer",
+    (mention) => mention.type == "mcpTool" || mention.type == "mcpServer",
   );
 
   const metionsByServer = toolMentions.reduce(
@@ -58,13 +59,10 @@ export function filterMCPToolsByMentions(
           ),
         };
       }
-      if (mention.type == "tool") {
-        return {
-          ...acc,
-          [mention.serverId]: [...(acc[mention.serverId] ?? []), mention.name],
-        };
-      }
-      return acc;
+      return {
+        ...acc,
+        [mention.serverId]: [...(acc[mention.serverId] ?? []), mention.name],
+      };
     },
     {} as Record<string, string[]>,
   ); // {serverId: [toolName1, toolName2]}
@@ -111,9 +109,11 @@ export function appendAnnotations(
   return [...annotations, ...newAnnotations];
 }
 
-export function mergeSystemPrompt(...prompts: (string | undefined)[]): string {
+export function mergeSystemPrompt(
+  ...prompts: (string | undefined | false)[]
+): string {
   const filteredPrompts = prompts
-    .map((prompt) => prompt?.trim())
+    .map((prompt) => (prompt ? prompt.trim() : ""))
     .filter(Boolean);
   return filteredPrompts.join("\n\n");
 }
@@ -121,7 +121,10 @@ export function mergeSystemPrompt(...prompts: (string | undefined)[]): string {
 export function manualToolExecuteByLastMessage(
   part: ToolInvocationUIPart,
   message: Message,
-  tools: Record<string, VercelAIMcpTool | VercelAIWorkflowTool>,
+  tools: Record<
+    string,
+    VercelAIMcpTool | VercelAIWorkflowTool | (Tool & { __$ref__?: string })
+  >,
   abortSignal?: AbortSignal,
 ) {
   const { args, toolName } = part.toolInvocation;
@@ -132,22 +135,41 @@ export function manualToolExecuteByLastMessage(
     },
   )?.toolInvocation as Extract<ToolInvocation, { state: "result" }>;
 
-  if (!manulConfirmation?.result) return MANUAL_REJECT_RESPONSE_PROMPT;
-
   const tool = tools[toolName];
 
+  if (!manulConfirmation?.result) return MANUAL_REJECT_RESPONSE_PROMPT;
   return safe(() => {
     if (!tool) throw new Error(`tool not found: ${toolName}`);
+    return ClientToolInvocationZodSchema.parse(manulConfirmation?.result);
   })
-    .map(() => {
-      if (tool.__$ref__ === "workflow") {
+    .map((result) => {
+      const value = result?.result;
+
+      if (result.action == "direct") {
+        return value;
+      } else if (result.action == "manual") {
+        if (!value) return MANUAL_REJECT_RESPONSE_PROMPT;
+        if (tool.__$ref__ === "workflow") {
+          return tool.execute!(args, {
+            toolCallId: part.toolInvocation.toolCallId,
+            abortSignal: abortSignal ?? new AbortController().signal,
+            messages: [],
+          });
+        } else if (tool.__$ref__ === "mcp") {
+          const mcpTool = tool as VercelAIMcpTool;
+          return mcpClientsManager.toolCall(
+            mcpTool._mcpServerId,
+            mcpTool._originToolName,
+            args,
+          );
+        }
         return tool.execute!(args, {
           toolCallId: part.toolInvocation.toolCallId,
           abortSignal: abortSignal ?? new AbortController().signal,
           messages: [],
         });
       }
-      return callMcpToolAction(tool._mcpServerId, tool._originToolName, args);
+      throw new Error("Invalid Client Tool Invocation Action " + result.action);
     })
     .ifFail((error) => ({
       isError: true,
@@ -246,7 +268,7 @@ export function filterMcpServerCustomizations(
   );
 }
 
-export const workflowToVercelAITools = ({
+export const workflowToVercelAITool = ({
   id,
   description,
   schema,
@@ -394,4 +416,29 @@ export const workflowToVercelAITools = ({
   tool.__$ref__ = "workflow";
 
   return tool;
+};
+
+export const workflowToVercelAITools = (
+  workflows: {
+    id: string;
+    name: string;
+    description?: string;
+    schema: ObjectJsonSchema7;
+  }[],
+  dataStream: DataStreamWriter,
+) => {
+  return workflows
+    .map((v) =>
+      workflowToVercelAITool({
+        ...v,
+        dataStream,
+      }),
+    )
+    .reduce(
+      (prev, cur) => {
+        prev[cur._toolName] = cur;
+        return prev;
+      },
+      {} as Record<string, VercelAIWorkflowTool>,
+    );
 };

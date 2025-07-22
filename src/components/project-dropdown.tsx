@@ -70,8 +70,8 @@ export function ProjectDropdown({ project, children, side, align }: Props) {
         if (currentProjectId === project.id) {
           router.push("/");
         }
-        mutate("threads");
-        mutate("projects");
+        mutate("/api/thread/list");
+        mutate("/api/project/list");
       })
       .unwrap();
   };
@@ -81,10 +81,10 @@ export function ProjectDropdown({ project, children, side, align }: Props) {
       <PopoverTrigger asChild>{children}</PopoverTrigger>
       <PopoverContent className="p-0 w-[220px]" side={side} align={align}>
         <Command>
-          <div className="flex items-center gap-2 px-2 py-1 text-sm pt-2 font-semibold">
+          <div className="flex items-center gap-2 px-2 py-1 text-xs pt-2 text-muted-foreground ml-1">
             {t("Chat.Project.project")}
           </div>
-          <CommandSeparator />
+
           <CommandList>
             <CommandGroup>
               <CommandItem className="cursor-pointer p-0">
@@ -117,6 +117,7 @@ export function ProjectDropdown({ project, children, side, align }: Props) {
                   </div>
                 </UpdateProjectNameDialog>
               </CommandItem>
+              <CommandSeparator className="my-1" />
 
               <CommandItem disabled={isDeleting} className="cursor-pointer p-0">
                 <div
@@ -165,7 +166,7 @@ function UpdateProjectNameDialog({
         setIsOpen(false);
         if (isOk) {
           onUpdated(name);
-          mutate("projects");
+          mutate("/api/project/list");
           mutate(`/projects/${projectId}`);
           toast.success(t("Chat.Project.projectUpdated"));
         } else {

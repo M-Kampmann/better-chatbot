@@ -32,7 +32,7 @@ import {
 import { useShallow } from "zustand/shallow";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { Badge } from "ui/badge";
-import { capitalizeFirstLetter, createDebounce } from "lib/utils";
+import { capitalizeFirstLetter, cn, createDebounce } from "lib/utils";
 
 const debounce = createDebounce();
 
@@ -89,7 +89,10 @@ export const ToolModeDropdown = ({ disabled }: { disabled?: boolean }) => {
               <Button
                 variant={"ghost"}
                 size={"sm"}
-                className="rounded-full p-2! data-[state=open]:bg-input! hover:bg-input!"
+                className={cn(
+                  "rounded-full p-2! data-[state=open]:bg-input! hover:bg-input!",
+                  toolChoice == "none" && "text-muted-foreground",
+                )}
                 onClick={() => setOpen(true)}
               >
                 <Settings2 />
@@ -159,6 +162,9 @@ export const ToolModeDropdown = ({ disabled }: { disabled?: boolean }) => {
               <div className="flex items-center gap-2">
                 <PenOff />
                 <span className="font-bold">None</span>
+                <span className="text-xs text-muted-foreground ml-4">
+                  @mention only
+                </span>
                 {toolChoice == "none" && <Check className="ml-auto" />}
               </div>
 

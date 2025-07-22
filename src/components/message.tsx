@@ -13,10 +13,10 @@ import {
   ToolMessagePart,
   ReasoningPart,
 } from "./message-parts";
-import { Think } from "ui/think";
 import { Terminal, ChevronDown, ChevronUp } from "lucide-react";
 import { Button } from "ui/button";
 import { useTranslations } from "next-intl";
+import { ChatMessageAnnotation, ClientToolInvocation } from "app-types/chat";
 
 interface Props {
   message: UIMessage;
@@ -26,7 +26,7 @@ interface Props {
   setMessages: UseChatHelpers["setMessages"];
   reload: UseChatHelpers["reload"];
   className?: string;
-  onPoxyToolCall?: (answer: boolean) => void;
+  onPoxyToolCall?: (result: ClientToolInvocation) => void;
   status: UseChatHelpers["status"];
   messageIndex: number;
   isError?: boolean;
@@ -46,6 +46,11 @@ const PurePreviewMessage = ({
   isError,
 }: Props) => {
   const isUserMessage = useMemo(() => message.role === "user", [message.role]);
+
+  if (message.role == "system") {
+    return null; // system message is not shown
+  }
+
   return (
     <div className="w-full mx-auto max-w-3xl px-6 group/message">
       <div
@@ -80,7 +85,7 @@ const PurePreviewMessage = ({
                 <ReasoningPart
                   key={key}
                   reasoning={part.reasoning}
-                  isThinking={isLastPart}
+                  isThinking={isLastPart && isLastMessage && isLoading}
                 />
               );
             }
@@ -104,6 +109,8 @@ const PurePreviewMessage = ({
               return (
                 <AssistMessagePart
                   threadId={threadId}
+                  isLast={isLastMessage && isLastPart}
+                  isLoading={isLoading}
                   key={key}
                   part={part}
                   showActions={
@@ -119,14 +126,20 @@ const PurePreviewMessage = ({
 
             if (part.type === "tool-invocation") {
               const isLast = isLastMessage && isLastPart;
+
+              const isManualToolInvocation = (
+                message.annotations as ChatMessageAnnotation[]
+              )?.some((a) => a.toolChoice == "manual");
+
               return (
                 <ToolMessagePart
                   isLast={isLast}
                   messageId={message.id}
+                  isManualToolInvocation={isManualToolInvocation}
                   showActions={
                     isLastMessage ? isLastPart && !isLoading : isLastPart
                   }
-                  onPoxyToolCall={isLast ? onPoxyToolCall : undefined}
+                  onPoxyToolCall={onPoxyToolCall}
                   key={key}
                   part={part}
                   isError={isError}
@@ -135,7 +148,6 @@ const PurePreviewMessage = ({
               );
             }
           })}
-          {isLoading && isLastMessage && <Think />}
         </div>
       </div>
     </div>

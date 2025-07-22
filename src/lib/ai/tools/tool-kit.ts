@@ -5,6 +5,8 @@ import { tavilySearchTool, tavilyWebContentTool } from "./web/web-search";
 import { AppDefaultToolkit, DefaultToolName } from ".";
 import { Tool } from "ai";
 import { httpFetchTool } from "./http/fetch";
+import { jsExecutionTool } from "./code/js-run-tool";
+import { pythonExecutionTool } from "./code/python-run-tool";
 
 export const APP_DEFAULT_TOOL_KIT: Record<
   AppDefaultToolkit,
@@ -21,5 +23,9 @@ export const APP_DEFAULT_TOOL_KIT: Record<
   },
   [AppDefaultToolkit.Http]: {
     [DefaultToolName.Http]: httpFetchTool,
+  },
+  [AppDefaultToolkit.Code]: {
+    [DefaultToolName.JavascriptExecution]: jsExecutionTool,
+    [DefaultToolName.PythonExecution]: pythonExecutionTool,
   },
 };
