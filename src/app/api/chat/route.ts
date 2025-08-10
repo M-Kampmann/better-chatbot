@@ -7,21 +7,19 @@ import {
   formatDataStreamPart,
   appendClientMessage,
   Message,
-  Tool,
 } from "ai";
 
 import { customModelProvider, isToolCallUnsupportedModel } from "lib/ai/models";
 
 import { mcpClientsManager } from "lib/ai/mcp/mcp-manager";
 
-import { chatRepository, workflowRepository } from "lib/db/repository";
+import { agentRepository, chatRepository } from "lib/db/repository";
 import globalLogger from "logger";
 import {
   buildMcpServerCustomizationsSystemPrompt,
-  buildProjectInstructionsSystemPrompt,
   buildUserSystemPrompt,
   buildToolCallUnsupportedModelSystemPrompt,
-  mentionPrompt,
+  buildThinkingSystemPrompt,
 } from "lib/ai/prompts";
 import { chatApiSchemaRequestBodySchema } from "app-types/chat";
 
@@ -30,26 +28,26 @@ import { errorIf, safe } from "ts-safe";
 import {
   appendAnnotations,
   excludeToolExecution,
-  filterMCPToolsByMentions,
   handleError,
   manualToolExecuteByLastMessage,
   mergeSystemPrompt,
   convertToMessage,
   extractInProgressToolPart,
   assignToolResult,
-  filterMCPToolsByAllowedMCPServers,
   filterMcpServerCustomizations,
-  workflowToVercelAITools,
+  loadMcpTools,
+  loadWorkFlowTools,
+  loadAppDefaultTools,
 } from "./shared.chat";
 import {
-  generateTitleFromUserMessageAction,
+  rememberAgentAction,
   rememberMcpServerCustomizationsAction,
 } from "./actions";
 import { getSession } from "auth/server";
 import { colorize } from "consola/utils";
 import { isVercelAIWorkflowTool } from "app-types/workflow";
-import { objectFlow } from "lib/utils";
-import { APP_DEFAULT_TOOL_KIT } from "lib/ai/tools/tool-kit";
+import { SequentialThinkingToolName } from "lib/ai/tools";
+import { sequentialThinkingTool } from "lib/ai/tools/thinking/sequential-thinking";
 
 const logger = globalLogger.withDefaults({
   message: colorize("blackBright", `Chat API: `),
@@ -71,9 +69,8 @@ export async function POST(request: Request) {
       chatModel,
       toolChoice,
       allowedAppDefaultToolkit,
-      autoTitle,
       allowedMcpServers,
-      projectId,
+      thinking,
       mentions = [],
     } = chatApiSchemaRequestBodySchema.parse(json);
 
@@ -85,10 +82,7 @@ export async function POST(request: Request) {
       logger.info(`create chat thread: ${id}`);
       const newThread = await chatRepository.insertThread({
         id,
-        projectId: projectId ?? null,
-        title: autoTitle
-          ? await generateTitleFromUserMessageAction({ message, model })
-          : "",
+        title: "",
         userId: session.user.id,
       });
       thread = await chatRepository.selectThreadDetails(newThread.id);
@@ -112,61 +106,55 @@ export async function POST(request: Request) {
 
     const inProgressToolStep = extractInProgressToolPart(messages.slice(-2));
 
+    const supportToolCall = !isToolCallUnsupportedModel(model);
+
+    const agentId = mentions.find((m) => m.type === "agent")?.agentId;
+
+    const agent = await rememberAgentAction(agentId, session.user.id);
+
+    if (agent?.instructions?.mentions) {
+      mentions.push(...agent.instructions.mentions);
+    }
+
     const isToolCallAllowed =
-      !isToolCallUnsupportedModel(model) &&
-      (toolChoice != "none" || mentions.length > 0);
+      supportToolCall && (toolChoice != "none" || mentions.length > 0);
 
     return createDataStreamResponse({
       execute: async (dataStream) => {
         const mcpClients = await mcpClientsManager.getClients();
-        logger.info(`mcp-server count: ${mcpClients.length}`);
-        const MCP_TOOLS = await safe(mcpClientsManager.tools())
+        const mcpTools = await mcpClientsManager.tools();
+        logger.info(
+          `mcp-server count: ${mcpClients.length}, mcp-tools count :${Object.keys(mcpTools).length}`,
+        );
+
+        const MCP_TOOLS = await safe()
           .map(errorIf(() => !isToolCallAllowed && "Not allowed"))
-          .map((tools) => {
-            // filter tools by mentions
-            if (mentions.length) {
-              return filterMCPToolsByMentions(tools, mentions);
-            }
-            // filter tools by allowed mcp servers
-            return filterMCPToolsByAllowedMCPServers(tools, allowedMcpServers);
-          })
+          .map(() =>
+            loadMcpTools({
+              mentions,
+              allowedMcpServers,
+            }),
+          )
           .orElse({});
 
         const WORKFLOW_TOOLS = await safe()
           .map(errorIf(() => !isToolCallAllowed && "Not allowed"))
           .map(() =>
-            workflowRepository.selectToolByIds(
-              mentions
-                .filter((m) => m.type == "workflow")
-                .map((v) => v.workflowId),
-            ),
+            loadWorkFlowTools({
+              mentions,
+              dataStream,
+            }),
           )
-          .map((v) => workflowToVercelAITools(v, dataStream))
           .orElse({});
 
-        const APP_DEFAULT_TOOLS = safe(APP_DEFAULT_TOOL_KIT)
+        const APP_DEFAULT_TOOLS = await safe()
           .map(errorIf(() => !isToolCallAllowed && "Not allowed"))
-          .map((tools) => {
-            if (mentions.length) {
-              const defaultToolMentions = mentions.filter(
-                (m) => m.type == "defaultTool",
-              );
-              return Array.from(Object.values(tools)).reduce((acc, t) => {
-                const allowed = objectFlow(t).filter((_, k) => {
-                  return defaultToolMentions.some((m) => m.name == k);
-                });
-                return { ...acc, ...allowed };
-              }, {});
-            }
-            return (
-              allowedAppDefaultToolkit?.reduce(
-                (acc, key) => {
-                  return { ...acc, ...tools[key] };
-                },
-                {} as Record<string, Tool>,
-              ) || {}
-            );
-          })
+          .map(() =>
+            loadAppDefaultTools({
+              mentions,
+              allowedAppDefaultToolkit,
+            }),
+          )
           .orElse({});
 
         if (inProgressToolStep) {
@@ -197,12 +185,13 @@ export async function POST(request: Request) {
           .orElse({});
 
         const systemPrompt = mergeSystemPrompt(
-          buildUserSystemPrompt(session.user, userPreferences),
-          buildProjectInstructionsSystemPrompt(thread?.instructions),
+          buildUserSystemPrompt(session.user, userPreferences, agent),
           buildMcpServerCustomizationsSystemPrompt(mcpServerCustomizations),
-          mentions.length > 0 && mentionPrompt,
-          isToolCallUnsupportedModel(model) &&
-            buildToolCallUnsupportedModelSystemPrompt,
+          !supportToolCall && buildToolCallUnsupportedModelSystemPrompt,
+          (!supportToolCall ||
+            ["openai", "anthropic"].includes(chatModel?.provider ?? "")) &&
+            thinking &&
+            buildThinkingSystemPrompt(supportToolCall),
         );
 
         const vercelAITooles = safe({ ...MCP_TOOLS, ...WORKFLOW_TOOLS })
@@ -214,6 +203,15 @@ export async function POST(request: Request) {
               ...APP_DEFAULT_TOOLS, // APP_DEFAULT_TOOLS Not Supported Manual
             };
           })
+          .map((t) => {
+            if (supportToolCall && thinking) {
+              return {
+                ...t,
+                [SequentialThinkingToolName]: sequentialThinkingTool,
+              };
+            }
+            return t;
+          })
           .unwrap();
 
         const allowedMcpTools = Object.values(allowedMcpServers ?? {})
@@ -221,7 +219,11 @@ export async function POST(request: Request) {
           .flat();
 
         logger.info(
-          `tool mode: ${toolChoice}, mentions: ${mentions.length}, allowedMcpTools: ${allowedMcpTools.length}`,
+          `${agent ? `agent: ${agent.name}, ` : ""}tool mode: ${toolChoice}, mentions: ${mentions.length}, thinking: ${thinking}`,
+        );
+
+        logger.info(
+          `allowedMcpTools: ${allowedMcpTools.length ?? 0}, allowedAppDefaultToolkit: ${allowedAppDefaultToolkit?.length ?? 0}`,
         );
         logger.info(
           `binding tool count APP_DEFAULT: ${Object.keys(APP_DEFAULT_TOOLS ?? {}).length}, MCP: ${Object.keys(MCP_TOOLS ?? {}).length}, Workflow: ${Object.keys(WORKFLOW_TOOLS ?? {}).length}`,
@@ -235,7 +237,7 @@ export async function POST(request: Request) {
           maxSteps: 10,
           toolCallStreaming: true,
           experimental_transform: smoothStream({ chunking: "word" }),
-          maxRetries: 1,
+          maxRetries: 2,
           tools: vercelAITooles,
           toolChoice: "auto",
           abortSignal: request.signal,
@@ -267,7 +269,7 @@ export async function POST(request: Request) {
                 },
               );
               dataStream.writeMessageAnnotation(annotations.at(-1)!);
-              await chatRepository.upsertMessage({
+              chatRepository.upsertMessage({
                 model: chatModel?.model ?? null,
                 threadId: thread!.id,
                 role: assistantMessage.role,
@@ -297,12 +299,30 @@ export async function POST(request: Request) {
                         },
                       };
                     }
+                    if (
+                      v.type == "tool-invocation" &&
+                      v.toolInvocation.state == "result" &&
+                      v.toolInvocation.toolName == SequentialThinkingToolName
+                    ) {
+                      return {
+                        ...v,
+                        toolInvocation: {
+                          ...v.toolInvocation,
+                          args: {},
+                        },
+                      };
+                    }
                     return v;
                   },
                 ),
                 attachments: assistantMessage.experimental_attachments,
                 annotations,
               });
+            }
+            if (agent) {
+              await agentRepository.updateAgent(agent.id, session.user.id, {
+                updatedAt: new Date(),
+              } as any);
             }
           },
         });
@@ -320,6 +340,6 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     logger.error(error);
-    return new Response(error.message, { status: 500 });
+    return Response.json({ message: error.message }, { status: 500 });
   }
 }

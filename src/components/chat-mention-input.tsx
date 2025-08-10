@@ -1,24 +1,22 @@
 "use client";
-import React, { RefObject, useCallback, useMemo } from "react";
+import React, {
+  RefObject,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  useEffect,
+} from "react";
 
-import { HammerIcon } from "lucide-react";
+import { CheckIcon, HammerIcon, SearchIcon } from "lucide-react";
 import { MCPIcon } from "ui/mcp-icon";
 
 import { ChatMention } from "app-types/chat";
 
-import {
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "ui/command";
-
 import MentionInput from "./mention-input";
 import { useTranslations } from "next-intl";
 import { Popover, PopoverContent, PopoverTrigger } from "ui/popover";
-import { createPortal } from "react-dom";
+
 import { appStore } from "@/app/store";
 import { cn, toAny } from "lib/utils";
 import { useShallow } from "zustand/shallow";
@@ -27,6 +25,18 @@ import { Editor } from "@tiptap/react";
 import { DefaultToolName } from "lib/ai/tools";
 import { Tooltip, TooltipContent, TooltipTrigger } from "ui/tooltip";
 import { DefaultToolIcon } from "./default-tool-icon";
+import equal from "lib/equal";
+import { EMOJI_DATA } from "lib/const";
+import { useIsMobile } from "@/hooks/use-mobile";
+
+type MentionItemType = {
+  id: string;
+  type: string;
+  label: string;
+  onSelect: () => void;
+  icon: React.ReactNode;
+  suffix?: React.ReactNode;
+};
 
 interface ChatMentionInputProps {
   onChange: (text: string) => void;
@@ -34,7 +44,10 @@ interface ChatMentionInputProps {
   onEnter?: () => void;
   placeholder?: string;
   input: string;
+  disabledMention?: boolean;
   ref?: RefObject<Editor | null>;
+  onFocus?: () => void;
+  onBlur?: () => void;
 }
 
 export default function ChatMentionInput({
@@ -44,16 +57,25 @@ export default function ChatMentionInput({
   placeholder,
   ref,
   input,
+  disabledMention,
+  onFocus,
+  onBlur,
 }: ChatMentionInputProps) {
+  const latestMentions = useRef<string[]>([]);
+
   const handleChange = useCallback(
     ({
       text,
       mentions,
     }: { text: string; mentions: { label: string; id: string }[] }) => {
       onChange(text);
-      onChangeMention(
-        mentions.map((mention) => JSON.parse(mention.id) as ChatMention),
+      const mentionsIds = mentions.map((mention) => mention.id);
+      const parsedMentions = mentionsIds.map(
+        (id) => JSON.parse(id) as ChatMention,
       );
+      if (equal(latestMentions.current, mentionsIds)) return;
+      latestMentions.current = mentionsIds;
+      onChangeMention(parsedMentions);
     },
     [onChange, onChangeMention],
   );
@@ -64,10 +86,14 @@ export default function ChatMentionInput({
       onEnter={onEnter}
       placeholder={placeholder}
       suggestionChar="@"
+      disabledMention={disabledMention}
       onChange={handleChange}
       MentionItem={ChatMentionInputMentionItem}
       Suggestion={ChatMentionInputSuggestion}
       editorRef={ref}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      fullWidthSuggestion={true}
     />
   );
 }
@@ -84,8 +110,8 @@ export function ChatMentionInputMentionItem({
     return (
       <div
         className={cn(
-          "flex items-center text-sm px-1 font-semibold transition-colors",
-          "text-blue-500",
+          "flex items-center text-sm px-2 py-0.5 rounded-sm font-semibold transition-colors",
+          "text-primary font-bold bg-primary/5",
           className,
         )}
       >
@@ -104,116 +130,221 @@ export function ChatMentionInputMentionItem({
   );
 }
 
-function ChatMentionInputSuggestion({
+export function ChatMentionInputSuggestion({
   onSelectMention,
   onClose,
   top,
   left,
+  selectedIds,
+  className,
+  open,
+  onOpenChange,
+  children,
+  style,
+  disabledType,
 }: {
   onClose: () => void;
   onSelectMention: (item: { label: string; id: string }) => void;
   top: number;
   left: number;
+  className?: string;
+  selectedIds?: string[];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  children?: React.ReactNode;
+  style?: React.CSSProperties;
+  disabledType?: ("mcp" | "workflow" | "defaultTool" | "agent")[];
 }) {
   const t = useTranslations("Common");
-  const [mcpList, workflowList] = appStore(
-    useShallow((state) => [state.mcpList, state.workflowToolList]),
+  const [mcpList, workflowList, agentList] = appStore(
+    useShallow((state) => [
+      state.mcpList,
+      state.workflowToolList,
+      state.agentList,
+    ]),
   );
+  const [searchValue, setSearchValue] = useState("");
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const itemRefs = useRef<{ [key: string]: HTMLButtonElement | null }>({});
+  const isMobile = useIsMobile();
 
   const mcpMentions = useMemo(() => {
-    return mcpList
+    if (disabledType?.includes("mcp")) return [];
+    const filtered = mcpList
       ?.filter((mcp) => mcp.toolInfo?.length)
-      .map((mcp) => {
+      .filter((mcp) => {
+        if (!searchValue) return true;
+        const search = searchValue.toLowerCase();
         return (
-          <CommandGroup heading={mcp.name} key={mcp.id}>
-            <CommandItem
-              key={`${mcp.id}-mcp`}
-              className="cursor-pointer text-foreground"
-              onSelect={() =>
-                onSelectMention({
-                  label: `mcp("${mcp.name}")`,
-                  id: JSON.stringify({
-                    type: "mcpServer",
-                    name: mcp.name,
-                    serverId: mcp.id,
-                    description: `${mcp.name} is an MCP server that includes ${mcp.toolInfo?.length ?? 0} tool(s).`,
-                    toolCount: mcp.toolInfo?.length ?? 0,
-                  }),
-                })
-              }
-            >
-              <MCPIcon className="size-3.5 text-foreground" />
-              <span className="truncate min-w-0">{mcp.name}</span>
+          mcp.name.toLowerCase().includes(search) ||
+          mcp.toolInfo?.some((tool) => tool.name.toLowerCase().includes(search))
+        );
+      });
+
+    return (
+      filtered?.flatMap((mcp) => {
+        const mcpId = JSON.stringify({
+          type: "mcpServer",
+          name: mcp.name,
+          serverId: mcp.id,
+          description: `${mcp.name} is an MCP server that includes ${mcp.toolInfo?.length ?? 0} tool(s).`,
+          toolCount: mcp.toolInfo?.length ?? 0,
+        });
+
+        const items: MentionItemType[] = [];
+
+        // Add MCP server item
+        if (
+          !searchValue ||
+          mcp.name.toLowerCase().includes(searchValue.toLowerCase())
+        ) {
+          items.push({
+            id: `${mcp.id}-mcp`,
+            type: "mcp",
+            label: mcp.name,
+            onSelect: () =>
+              onSelectMention({
+                label: `mcp("${mcp.name}")`,
+                id: mcpId,
+              }),
+            icon: <MCPIcon className="size-3.5 text-foreground" />,
+            suffix: selectedIds?.includes(mcpId) ? (
+              <CheckIcon className="size-3 ml-auto" />
+            ) : (
               <span className="ml-auto text-xs text-muted-foreground">
                 {mcp.toolInfo?.length} tools
               </span>
-            </CommandItem>
-            {mcp.toolInfo?.map((tool) => {
-              return (
-                <CommandItem
-                  key={`${mcp.id}-${tool.name}`}
-                  className="cursor-pointer text-foreground"
-                  onSelect={() =>
-                    onSelectMention({
-                      label: `tool("${tool.name}") `,
-                      id: JSON.stringify({
-                        type: "mcpTool",
-                        name: tool.name,
-                        serverId: mcp.id,
-                        description: tool.description,
-                        serverName: mcp.name,
-                      }),
-                    })
-                  }
-                >
-                  <HammerIcon className="size-3.5" />
-                  <span className="truncate min-w-0">{tool.name}</span>
-                </CommandItem>
-              );
-            })}
-          </CommandGroup>
-        );
+            ),
+          });
+        }
+
+        // Add tool items
+        const toolItems =
+          mcp.toolInfo
+            ?.filter(
+              (tool) =>
+                !searchValue ||
+                tool.name.toLowerCase().includes(searchValue.toLowerCase()),
+            )
+            .map((tool) => {
+              const toolId = JSON.stringify({
+                type: "mcpTool",
+                name: tool.name,
+                serverId: mcp.id,
+                description: tool.description,
+                serverName: mcp.name,
+              });
+              return {
+                id: `${mcp.id}-${tool.name}`,
+                type: "mcpTool",
+                label: tool.name,
+                onSelect: () =>
+                  onSelectMention({
+                    label: `tool("${tool.name}") `,
+                    id: toolId,
+                  }),
+                icon: <HammerIcon className="size-3.5" />,
+                suffix: selectedIds?.includes(toolId) && (
+                  <CheckIcon className="size-3 ml-auto" />
+                ),
+              };
+            }) || [];
+
+        return [...items, ...toolItems];
+      }) || []
+    );
+  }, [mcpList, selectedIds, disabledType, searchValue]);
+
+  const agentMentions = useMemo(() => {
+    if (disabledType?.includes("agent")) return [];
+    if (!agentList.length) return [];
+
+    return agentList
+      .filter(
+        (agent) =>
+          !searchValue ||
+          agent.name.toLowerCase().includes(searchValue.toLowerCase()),
+      )
+      .map((agent, i) => {
+        const id = JSON.stringify({
+          type: "agent",
+          name: agent.name,
+          agentId: agent.id,
+          description: agent.description,
+          icon: agent.icon,
+        });
+        return {
+          id: agent.id,
+          type: "agent",
+          label: agent.name,
+          onSelect: () =>
+            onSelectMention({
+              label: `agent("${agent.name}")`,
+              id,
+            }),
+          icon: (
+            <Avatar
+              style={agent.icon?.style}
+              className="size-3.5 ring-[1px] ring-input rounded-full"
+            >
+              <AvatarImage
+                src={agent.icon?.value || EMOJI_DATA[i % EMOJI_DATA.length]}
+              />
+              <AvatarFallback>{agent.name.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+          ),
+          suffix: selectedIds?.includes(id) && (
+            <CheckIcon className="size-3 ml-auto" />
+          ),
+        };
       });
-  }, [mcpList]);
+  }, [agentList, selectedIds, disabledType, searchValue]);
 
   const workflowMentions = useMemo(() => {
-    if (!workflowList.length) return;
-    return (
-      <CommandGroup heading="Workflows" key="workflows">
-        {workflowList.map((workflow) => {
-          return (
-            <CommandItem
-              key={workflow.id}
-              className="cursor-pointer text-foreground"
-              onSelect={() =>
-                onSelectMention({
-                  label: `tool("${workflow.name}")`,
-                  id: JSON.stringify({
-                    type: "workflow",
-                    name: workflow.name,
-                    workflowId: workflow.id,
-                    icon: workflow.icon,
-                    description: workflow.description,
-                  }),
-                })
-              }
+    if (disabledType?.includes("workflow")) return [];
+    if (!workflowList.length) return [];
+
+    return workflowList
+      .filter(
+        (workflow) =>
+          !searchValue ||
+          workflow.name.toLowerCase().includes(searchValue.toLowerCase()),
+      )
+      .map((workflow) => {
+        const id = JSON.stringify({
+          type: "workflow",
+          name: workflow.name,
+          workflowId: workflow.id,
+          icon: workflow.icon,
+          description: workflow.description,
+        });
+        return {
+          id: workflow.id,
+          type: "workflow",
+          label: workflow.name,
+          onSelect: () =>
+            onSelectMention({
+              label: `tool("${workflow.name}")`,
+              id,
+            }),
+          icon: (
+            <Avatar
+              style={workflow.icon?.style}
+              className="size-3.5 ring-[1px] ring-input rounded-full"
             >
-              <Avatar
-                style={workflow.icon?.style}
-                className="size-3.5 ring-[1px] ring-input rounded-full"
-              >
-                <AvatarImage src={workflow.icon?.value} />
-                <AvatarFallback>{workflow.name.slice(0, 1)}</AvatarFallback>
-              </Avatar>
-              <span className="truncate min-w-0">{workflow.name}</span>
-            </CommandItem>
-          );
-        })}
-      </CommandGroup>
-    );
-  }, [workflowList]);
+              <AvatarImage src={workflow.icon?.value} />
+              <AvatarFallback>{workflow.name.slice(0, 1)}</AvatarFallback>
+            </Avatar>
+          ),
+          suffix: selectedIds?.includes(id) && (
+            <CheckIcon className="size-3 ml-auto" />
+          ),
+        };
+      });
+  }, [workflowList, selectedIds, disabledType, searchValue]);
 
   const defaultToolMentions = useMemo(() => {
+    if (disabledType?.includes("defaultTool")) return [];
     const items = Object.values(DefaultToolName).map((toolName) => {
       let label = toolName as string;
       const icon = <DefaultToolIcon name={toolName} />;
@@ -230,6 +361,10 @@ function ChatMentionInputSuggestion({
         case DefaultToolName.CreateLineChart:
           label = "line-chart";
           description = "Create a line chart";
+          break;
+        case DefaultToolName.CreateTable:
+          label = "table";
+          description = "Create a table";
           break;
         case DefaultToolName.WebSearch:
           label = "web-search";
@@ -260,65 +395,435 @@ function ChatMentionInputSuggestion({
       };
     });
 
-    return (
-      <>
-        <CommandGroup heading="App Tools" key="default-tool">
-          {items.map((item) => {
-            return (
-              <CommandItem
-                key={item.id}
-                onSelect={() =>
-                  onSelectMention({
-                    label: `tool('${item.label}')`,
-                    id: JSON.stringify({
-                      type: "defaultTool",
-                      name: item.id,
-                      label: item.label,
-                      description: item.description,
-                    }),
-                  })
-                }
-              >
-                {item.icon}
-                <span className="truncate min-w-0">{item.label}</span>
-              </CommandItem>
-            );
-          })}
-        </CommandGroup>
-      </>
-    );
-  }, []);
+    return items
+      .filter(
+        (item) =>
+          !searchValue ||
+          item.label.toLowerCase().includes(searchValue.toLowerCase()),
+      )
+      .map((item) => {
+        const id = JSON.stringify({
+          type: "defaultTool",
+          name: item.id,
+          label: item.label,
+          description: item.description,
+        });
+        return {
+          id: item.id,
+          type: "defaultTool",
+          label: item.label,
+          onSelect: () =>
+            onSelectMention({
+              label: `tool('${item.label}')`,
+              id,
+            }),
+          icon: item.icon,
+          suffix: selectedIds?.includes(id) && (
+            <CheckIcon className="size-3 ml-auto" />
+          ),
+        };
+      });
+  }, [selectedIds, disabledType, searchValue]);
 
-  return createPortal(
-    <Popover open onOpenChange={(f) => !f && onClose()}>
-      <PopoverTrigger asChild>
-        <span
-          className="fixed z-50"
-          style={{
-            top,
-            left,
-          }}
-        ></span>
-      </PopoverTrigger>
-      <PopoverContent className="p-0 w-xs" align="start" side="top">
-        <Command>
-          <CommandInput
-            onKeyDown={(e) => {
-              if (e.key == "Backspace" && !e.currentTarget.value) {
-                onClose();
-              }
-            }}
-            placeholder={t("search")}
-          />
-          <CommandList className="p-2">
-            <CommandEmpty>{t("noResults")}</CommandEmpty>
-            {workflowMentions}
-            {defaultToolMentions}
-            {mcpMentions}
-          </CommandList>
-        </Command>
+  const trigger = useMemo(() => {
+    if (children) return children;
+    return (
+      <span
+        className="fixed z-50"
+        style={{
+          top,
+          left,
+        }}
+      ></span>
+    );
+  }, [children, top, left]);
+
+  // Combine all mentions
+  const allMentions = useMemo(() => {
+    return [
+      ...agentMentions,
+      ...workflowMentions,
+      ...defaultToolMentions,
+      ...mcpMentions,
+    ];
+  }, [agentMentions, workflowMentions, defaultToolMentions, mcpMentions]);
+
+  // Reset selected index when mentions change
+  useEffect(() => {
+    setSelectedIndex(0);
+  }, [allMentions.length]);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    const selectedItem = allMentions[selectedIndex];
+    if (selectedItem && itemRefs.current[selectedItem.id]) {
+      itemRefs.current[selectedItem.id]?.scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  }, [selectedIndex, allMentions]);
+
+  // Group mentions by type
+  const groupedMentions = useMemo(() => {
+    const groups = {
+      agent: { title: "Agents", items: [] as MentionItemType[] },
+      workflow: { title: "Workflows", items: [] as MentionItemType[] },
+      defaultTool: { title: "App Tools", items: [] as MentionItemType[] },
+      mcp: { title: "MCP Tools", items: [] as MentionItemType[] },
+      mcpTool: { title: "MCP Tools", items: [] as MentionItemType[] },
+    };
+
+    allMentions.forEach((mention) => {
+      if (mention.type === "mcpTool") {
+        groups.mcp.items.push(mention);
+      } else if (groups[mention.type as keyof typeof groups]) {
+        groups[mention.type as keyof typeof groups].items.push(mention);
+      }
+    });
+
+    return groups;
+  }, [allMentions]);
+
+  return (
+    <Popover
+      open={open ?? true}
+      onOpenChange={(f) => {
+        !f && onClose();
+        onOpenChange?.(f);
+      }}
+    >
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent
+        className={cn("p-0", className)}
+        align="start"
+        side="top"
+        style={{
+          ...style,
+          width: style?.width || (isMobile ? "100%" : "auto"),
+          minWidth: isMobile ? undefined : "600px",
+          maxWidth: isMobile ? undefined : "800px",
+        }}
+      >
+        <div className="flex flex-col">
+          <div className="flex items-center gap-2 px-3 py-2 border-b">
+            <SearchIcon className="size-4 shrink-0 opacity-50" />
+            <input
+              className="flex h-8 w-full rounded-md bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              placeholder={t("search")}
+              value={searchValue}
+              onChange={(e) => setSearchValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Backspace" && !e.currentTarget.value) {
+                  onClose();
+                }
+                if (e.key === "Enter" && allMentions.length > 0) {
+                  e.preventDefault();
+                  allMentions[selectedIndex].onSelect();
+                }
+                if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSelectedIndex((prev) =>
+                    prev < allMentions.length - 1 ? prev + 1 : 0,
+                  );
+                }
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSelectedIndex((prev) =>
+                    prev > 0 ? prev - 1 : allMentions.length - 1,
+                  );
+                }
+                if (
+                  !isMobile &&
+                  (e.key === "ArrowLeft" || e.key === "ArrowRight")
+                ) {
+                  e.preventDefault();
+                  // Calculate column navigation
+                  const currentItem = allMentions[selectedIndex];
+                  const currentType =
+                    currentItem.type === "mcpTool" ? "mcp" : currentItem.type;
+                  const typeOrder = ["agent", "workflow", "mcp", "defaultTool"];
+                  const currentTypeIndex = typeOrder.indexOf(currentType);
+
+                  if (e.key === "ArrowLeft" && currentTypeIndex > 0) {
+                    const prevType = typeOrder[currentTypeIndex - 1];
+                    const prevTypeItems = allMentions.filter(
+                      (item) =>
+                        item.type === prevType ||
+                        (prevType === "mcp" && item.type === "mcpTool"),
+                    );
+                    if (prevTypeItems.length > 0) {
+                      setSelectedIndex(allMentions.indexOf(prevTypeItems[0]));
+                    }
+                  } else if (
+                    e.key === "ArrowRight" &&
+                    currentTypeIndex < typeOrder.length - 1
+                  ) {
+                    const nextType = typeOrder[currentTypeIndex + 1];
+                    const nextTypeItems = allMentions.filter(
+                      (item) =>
+                        item.type === nextType ||
+                        (nextType === "mcp" && item.type === "mcpTool"),
+                    );
+                    if (nextTypeItems.length > 0) {
+                      setSelectedIndex(allMentions.indexOf(nextTypeItems[0]));
+                    }
+                  }
+                }
+              }}
+              autoFocus
+            />
+          </div>
+
+          <div
+            className={cn(
+              "overflow-hidden",
+              isMobile ? "max-h-[50vh]" : "h-[300px]",
+            )}
+          >
+            {allMentions.length === 0 ? (
+              <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground p-8">
+                <div className="text-center">
+                  <div className="mb-2">
+                    {searchValue
+                      ? t("noResults")
+                      : "Type @ to see available mentions"}
+                  </div>
+                  {searchValue && (
+                    <div className="text-xs opacity-60">
+                      No results found for &quot;{searchValue}&quot;
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : isMobile ? (
+              // Mobile vertical layout
+              <div className="overflow-y-auto max-h-[50vh]">
+                {groupedMentions.agent.items.length > 0 && (
+                  <div className="p-2">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.agent.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.agent.items.map((item) => (
+                        <MentionItem
+                          key={item.id}
+                          item={item}
+                          isSelected={
+                            allMentions[selectedIndex]?.id === item.id
+                          }
+                          ref={(el) => {
+                            itemRefs.current[item.id] = el;
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {groupedMentions.workflow.items.length > 0 && (
+                  <div className="p-2 border-t">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.workflow.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.workflow.items.map((item) => (
+                        <MentionItem
+                          key={item.id}
+                          item={item}
+                          isSelected={
+                            allMentions[selectedIndex]?.id === item.id
+                          }
+                          ref={(el) => {
+                            itemRefs.current[item.id] = el;
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {groupedMentions.defaultTool.items.length > 0 && (
+                  <div className="p-2 border-t">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.defaultTool.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.defaultTool.items.map((item) => (
+                        <MentionItem
+                          key={item.id}
+                          item={item}
+                          isSelected={
+                            allMentions[selectedIndex]?.id === item.id
+                          }
+                          ref={(el) => {
+                            itemRefs.current[item.id] = el;
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {groupedMentions.mcp.items.length > 0 && (
+                  <div className="p-2 border-t">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.mcp.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.mcp.items.map((item) => (
+                        <MentionItem
+                          key={item.id}
+                          item={item}
+                          isSelected={
+                            allMentions[selectedIndex]?.id === item.id
+                          }
+                          ref={(el) => {
+                            itemRefs.current[item.id] = el;
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Desktop horizontal layout
+              <div className="flex flex-1 h-[300px]">
+                {/* Agents & Workflows Column */}
+                <div className="flex-1 border-r overflow-y-auto">
+                  <div className="p-2">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.agent.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.agent.items.length > 0 ? (
+                        groupedMentions.agent.items.map((item) => (
+                          <MentionItem
+                            key={item.id}
+                            item={item}
+                            isSelected={
+                              allMentions[selectedIndex]?.id === item.id
+                            }
+                            ref={(el) => {
+                              itemRefs.current[item.id] = el;
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          No agents found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-2 border-t">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.workflow.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.workflow.items.length > 0 ? (
+                        groupedMentions.workflow.items.map((item) => (
+                          <MentionItem
+                            key={item.id}
+                            item={item}
+                            isSelected={
+                              allMentions[selectedIndex]?.id === item.id
+                            }
+                            ref={(el) => {
+                              itemRefs.current[item.id] = el;
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          No workflows found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* MCP Tools Column */}
+                <div className="flex-1 border-r overflow-y-auto">
+                  <div className="p-2">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.mcp.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.mcp.items.length > 0 ? (
+                        groupedMentions.mcp.items.map((item) => (
+                          <MentionItem
+                            key={item.id}
+                            item={item}
+                            isSelected={
+                              allMentions[selectedIndex]?.id === item.id
+                            }
+                            ref={(el) => {
+                              itemRefs.current[item.id] = el;
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          No MCP tools found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Default Tools Column */}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="p-2">
+                    <div className="text-xs font-medium text-muted-foreground px-2 py-1.5">
+                      {groupedMentions.defaultTool.title}
+                    </div>
+                    <div className="space-y-1">
+                      {groupedMentions.defaultTool.items.length > 0 ? (
+                        groupedMentions.defaultTool.items.map((item) => (
+                          <MentionItem
+                            key={item.id}
+                            item={item}
+                            isSelected={
+                              allMentions[selectedIndex]?.id === item.id
+                            }
+                            ref={(el) => {
+                              itemRefs.current[item.id] = el;
+                            }}
+                          />
+                        ))
+                      ) : (
+                        <div className="px-2 py-3 text-xs text-muted-foreground text-center">
+                          No app tools found
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       </PopoverContent>
-    </Popover>,
-    document.body,
+    </Popover>
   );
 }
+
+const MentionItem = React.forwardRef<
+  HTMLButtonElement,
+  { item: MentionItemType; isSelected: boolean }
+>(({ item, isSelected }, ref) => {
+  return (
+    <button
+      ref={ref}
+      className={cn(
+        "flex items-center gap-2 w-full rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-accent hover:text-accent-foreground cursor-pointer",
+        isSelected && "bg-accent text-accent-foreground",
+      )}
+      onClick={() => item.onSelect()}
+    >
+      {item.icon}
+      <span className="truncate min-w-0">{item.label}</span>
+      {item.suffix}
+    </button>
+  );
+});
+MentionItem.displayName = "MentionItem";

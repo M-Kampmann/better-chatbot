@@ -9,9 +9,12 @@ export enum DefaultToolName {
   CreatePieChart = "createPieChart",
   CreateBarChart = "createBarChart",
   CreateLineChart = "createLineChart",
+  CreateTable = "createTable",
   WebSearch = "webSearch",
   WebContent = "webContent",
   Http = "http",
   JavascriptExecution = "mini-javascript-execution",
   PythonExecution = "python-execution",
 }
+
+export const SequentialThinkingToolName = "sequential-thinking";

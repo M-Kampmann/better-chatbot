@@ -1,22 +1,24 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { ChatMention, ChatModel, ChatThread, Project } from "app-types/chat";
+import { ChatMention, ChatModel, ChatThread } from "app-types/chat";
 import { AllowedMCPServer, MCPServerInfo } from "app-types/mcp";
 import { OPENAI_VOICE } from "lib/ai/speech/open-ai/use-voice-chat.openai";
 import { WorkflowSummary } from "app-types/workflow";
 import { AppDefaultToolkit } from "lib/ai/tools";
+import { AgentSummary } from "app-types/agent";
+import { ArchiveWithItemCount } from "app-types/archive";
 
 export interface AppState {
   threadList: ChatThread[];
   mcpList: (MCPServerInfo & { id: string })[];
+  agentList: AgentSummary[];
   workflowToolList: WorkflowSummary[];
-  projectList: Omit<Project, "instructions">[];
   currentThreadId: ChatThread["id"] | null;
-  currentProjectId: Project["id"] | null;
   toolChoice: "auto" | "none" | "manual";
   allowedMcpServers?: Record<string, AllowedMCPServer>;
   allowedAppDefaultToolkit?: AppDefaultToolkit[];
   generatingTitleThreadIds: string[];
+  archiveList: ArchiveWithItemCount[];
   threadMentions: {
     [threadId: string]: ChatMention[];
   };
@@ -36,13 +38,13 @@ export interface AppState {
   };
   voiceChat: {
     isOpen: boolean;
-    threadId?: string;
-    projectId?: string;
+    agentId?: string;
     options: {
       provider: string;
       providerOptions?: Record<string, any>;
     };
   };
+  pendingThreadMention?: ChatMention;
 }
 
 export interface AppDispatch {
@@ -51,17 +53,21 @@ export interface AppDispatch {
 
 const initialState: AppState = {
   threadList: [],
-  projectList: [],
+  archiveList: [],
   generatingTitleThreadIds: [],
   threadMentions: {},
   mcpList: [],
+  agentList: [],
   workflowToolList: [],
   currentThreadId: null,
-  currentProjectId: null,
   toolChoice: "auto",
   allowedMcpServers: undefined,
-  allowedAppDefaultToolkit: [],
+  allowedAppDefaultToolkit: [
+    AppDefaultToolkit.Code,
+    AppDefaultToolkit.Visualization,
+  ],
   toolPresets: [],
+  chatModel: undefined,
   openShortcutsPopup: false,
   openChatPreferences: false,
   mcpCustomizationPopup: undefined,
@@ -78,6 +84,7 @@ const initialState: AppState = {
       },
     },
   },
+  pendingThreadMention: undefined,
 };
 
 export const appStore = create<AppState & AppDispatch>()(
@@ -87,15 +94,16 @@ export const appStore = create<AppState & AppDispatch>()(
       mutate: set,
     }),
     {
-      name: "mc-app-store-v2.0.0",
+      name: "mc-app-store-v2.0.1",
       partialize: (state) => ({
         chatModel: state.chatModel || initialState.chatModel,
         toolChoice: state.toolChoice || initialState.toolChoice,
         allowedMcpServers:
           state.allowedMcpServers || initialState.allowedMcpServers,
-        allowedAppDefaultToolkit:
-          state.allowedAppDefaultToolkit ||
-          initialState.allowedAppDefaultToolkit,
+        allowedAppDefaultToolkit: (
+          state.allowedAppDefaultToolkit ??
+          initialState.allowedAppDefaultToolkit
+        )?.filter((v) => AppDefaultToolkit[v]),
         temporaryChat: {
           ...initialState.temporaryChat,
           ...state.temporaryChat,
@@ -105,8 +113,6 @@ export const appStore = create<AppState & AppDispatch>()(
         voiceChat: {
           ...initialState.voiceChat,
           ...state.voiceChat,
-          threadId: undefined,
-          projectId: undefined,
           isOpen: false,
         },
       }),

@@ -3,6 +3,7 @@ import { mcpClientsManager } from "lib/ai/mcp/mcp-manager";
 import { z } from "zod";
 
 import { McpServerSchema } from "lib/db/pg/schema.pg";
+import { mcpOAuthRepository, mcpRepository } from "lib/db/repository";
 
 export async function selectMcpClientsAction() {
   const list = await mcpClientsManager.getClients();
@@ -44,16 +45,11 @@ export async function saveMcpClientAction(
     );
   }
 
-  await mcpClientsManager.persistClient(server);
+  return mcpClientsManager.persistClient(server);
 }
 
 export async function existMcpClientByServerNameAction(serverName: string) {
-  const client = await mcpClientsManager.getClients().then((clients) => {
-    return clients.find(
-      (client) => client.client.getInfo().name === serverName,
-    );
-  });
-  return !!client;
+  return await mcpRepository.existsByServerName(serverName);
 }
 
 export async function removeMcpClientAction(id: string) {
@@ -62,6 +58,24 @@ export async function removeMcpClientAction(id: string) {
 
 export async function refreshMcpClientAction(id: string) {
   await mcpClientsManager.refreshClient(id);
+}
+
+export async function authorizeMcpClientAction(id: string) {
+  await refreshMcpClientAction(id);
+  const client = await mcpClientsManager.getClient(id);
+  if (client?.client.status != "authorizing") {
+    throw new Error("Not Authorizing");
+  }
+  return client.client.getAuthorizationUrl()?.toString();
+}
+
+export async function checkTokenMcpClientAction(id: string) {
+  const session = await mcpOAuthRepository.getAuthenticatedSession(id);
+
+  // for wait connect to mcp server
+  await mcpClientsManager.getClient(id).catch(() => null);
+
+  return !!session?.tokens;
 }
 
 export async function callMcpToolAction(

@@ -1,10 +1,11 @@
 import { McpServerCustomizationsPrompt, MCPToolInfo } from "app-types/mcp";
 
 import { UserPreferences } from "app-types/user";
-import { Project } from "app-types/chat";
 import { User } from "better-auth";
 import { createMCPToolId } from "./mcp/mcp-tool-id";
 import { format } from "date-fns";
+import { SequentialThinkingToolName } from "./tools";
+import { Agent } from "app-types/agent";
 
 export const CREATE_THREAD_TITLE_PROMPT = `
 You are a chat title generation expert.
@@ -16,135 +17,211 @@ Critical rules:
 - Do not use quotes, colons, or special characters
 - Use the same language as the user's message`;
 
+export const buildAgentGenerationPrompt = (toolNames: string[]) => {
+  const toolsList = toolNames.map((name) => `- ${name}`).join("\n");
+
+  return `
+You are an elite AI agent architect. Your mission is to translate user requirements into robust, high-performance agent configurations. Follow these steps for every request:
+
+1. Extract Core Intent: Carefully analyze the user's input to identify the fundamental purpose, key responsibilities, and success criteria for the agent. Consider both explicit and implicit needs.
+
+2. Design Expert Persona: Define a compelling expert identity for the agent, ensuring deep domain knowledge and a confident, authoritative approach to decision-making.
+
+3. Architect Comprehensive Instructions: Write a system prompt that:
+- Clearly defines the agent's behavioral boundaries and operational parameters
+- Specifies methodologies, best practices, and quality control steps for the task
+- Anticipates edge cases and provides guidance for handling them
+- Incorporates any user-specified requirements or preferences
+- Defines output format expectations when relevant
+
+4. Strategic Tool Selection: Select only tools crucially necessary for achieving the agent's mission effectively from available tools:
+${toolsList}
+
+5. Optimize for Performance: Include decision-making frameworks, self-verification steps, efficient workflow patterns, and clear escalation or fallback strategies.
+
+6. Output Generation: Return a structured object with these fields:
+- name: Concise, descriptive name reflecting the agent's primary function
+- description: 1-2 sentences capturing the unique value and primary benefit to users  
+- role: Precise domain-specific expertise area
+- instructions: The comprehensive system prompt from steps 2-5
+- tools: Array of selected tool names from step 4
+
+CRITICAL: Generate all output content in the same language as the user's request. Be specific and comprehensive. Proactively seek clarification if requirements are ambiguous. Your output should enable the new agent to operate autonomously and reliably within its domain.`.trim();
+};
+
 export const buildUserSystemPrompt = (
   user?: User,
   userPreferences?: UserPreferences,
+  agent?: Agent,
 ) => {
-  let prompt = `
-You are better-chatbot, an intelligent AI assistant that leverages the Model Context Protocol (MCP) to seamlessly integrate and utilize various tools and resources. You excel at understanding user needs and efficiently orchestrating the available MCP tools to provide comprehensive, accurate assistance. You maintain context across conversations and adapt your responses based on the specific tools and capabilities available through your MCP connections.
+  const assistantName =
+    agent?.name || userPreferences?.botName || "better-chatbot";
+  const currentTime = format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a");
 
-### User Context ###
-<user_information>
-- **Current Time**: ${format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a")}
-${user?.name ? `- **User Name**: ${user?.name}` : ""}
-${user?.email ? `- **User Email**: ${user?.email}` : ""}
-${userPreferences?.profession ? `- **User Profession**: ${userPreferences?.profession}` : ""}
-</user_information>`.trim();
-  prompt += `\n\n`;
+  let prompt = `You are ${assistantName}`;
 
-  // Enhanced addressing preferences
-  if (userPreferences?.displayName) {
-    prompt += `
-### Addressing Preferences ###
-<addressing>
-  * Use the following name: ${userPreferences.displayName || user?.name}
-  * Use their name at appropriate moments to personalize the interaction
-</addressing>`.trim();
-    prompt += `\n\n`;
+  if (agent?.instructions?.role) {
+    prompt += `. You are an expert in ${agent.instructions.role}`;
   }
 
-  // Enhanced response style guidance with more specific instructions
+  prompt += `. The current date and time is ${currentTime}.`;
+
+  // Agent-specific instructions as primary core
+  if (agent?.instructions?.systemPrompt) {
+    prompt += `
+  # Core Instructions
+  <core_capabilities>
+  ${agent.instructions.systemPrompt}
+  </core_capabilities>`;
+  }
+
+  // User context section (first priority)
+  const userInfo: string[] = [];
+  if (user?.name) userInfo.push(`Name: ${user.name}`);
+  if (user?.email) userInfo.push(`Email: ${user.email}`);
+  if (userPreferences?.profession)
+    userInfo.push(`Profession: ${userPreferences.profession}`);
+
+  if (userInfo.length > 0) {
+    prompt += `
+
+<user_information>
+${userInfo.join("\n")}
+</user_information>`;
+  }
+
+  // General capabilities (secondary)
   prompt += `
-### Communication Style ###
-<response_style>
-${
-  userPreferences?.responseStyleExample
-    ? `
-- **Match your response style to this example**:
-  """
-  ${userPreferences.responseStyleExample}
-- Replicate its tone, complexity, and approach to explanation.
-- Adapt this style naturally to different topics and query complexities.
-  """`.trim()
-    : ""
-}
-- If a diagram or chart is requested or would be helpful to express your thoughts, use mermaid code blocks.
-- When you're about to use a tool, briefly mention which tool you'll use with natural, simple phrases. Examples: "I'll use the weather tool to check that for you", "Let me search for that information", "I'll run some calculations to help with this".
-</response_style>`.trim();
+
+<general_capabilities>
+You can assist with:
+- Analysis and problem-solving across various domains
+- Using available tools and resources to complete tasks
+- Adapting communication to user preferences and context
+</general_capabilities>`;
+
+  // Communication preferences
+  const displayName = userPreferences?.displayName || user?.name;
+  const hasStyleExample = userPreferences?.responseStyleExample;
+
+  if (displayName || hasStyleExample) {
+    prompt += `
+
+<communication_preferences>`;
+
+    if (displayName) {
+      prompt += `
+- Address the user as "${displayName}" when appropriate to personalize interactions`;
+    }
+
+    if (hasStyleExample) {
+      prompt += `
+- Match this communication style and tone:
+"""
+${userPreferences.responseStyleExample}
+"""`;
+    }
+
+    prompt += `
+
+- When using tools, briefly mention which tool you'll use with natural phrases
+- Examples: "I'll search for that information", "Let me check the weather", "I'll run some calculations"
+- Use \`mermaid\` code blocks for diagrams and charts when helpful
+</communication_preferences>`;
+  }
 
   return prompt.trim();
 };
-
-export const mentionPrompt = `
-### Mention ###
-- When a user mentions a tool using @tool("{tool_name}") format, treat it as an explicit request to use that specific tool.
-- When a user mentions a mcp server using @mcp("{mcp_server_name}") format, treat it as an explicit request to use that specific mcp server. You should automatically select and use the most appropriate tool from that MCP server based on the user's question.
-`.trim();
 
 export const buildSpeechSystemPrompt = (
   user: User,
   userPreferences?: UserPreferences,
+  agent?: Agent,
 ) => {
-  let prompt = `
-You are better-chatbot, a conversational AI assistant that helps users through voice interactions. You seamlessly integrate tools and resources via the Model Context Protocol (MCP) to provide helpful, natural responses. Keep your answers concise and conversational for voice-based interactions.
+  const assistantName = agent?.name || userPreferences?.botName || "Assistant";
+  const currentTime = format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a");
 
-### User Context ###
-<user_information>
-- **System time**: ${format(new Date(), "EEEE, MMMM d, yyyy 'at' h:mm:ss a")}
-${user?.name ? `- **User Name**: ${user?.name}` : ""}
-${user?.email ? `- **User Email**: ${user?.email}` : ""}
-${userPreferences?.profession ? `- **User Profession**: ${userPreferences?.profession}` : ""}
-</user_information>`.trim();
-  prompt += `\n`;
-  // Enhanced addressing preferences
-  if (userPreferences?.displayName) {
-    prompt += `
-### Addressing Preferences ###
-<addressing>
-* Use the following name: ${userPreferences.displayName || user?.name}
-* Use their name at appropriate moments to personalize the interaction
-</addressing>`.trim();
-    prompt += `\n`;
+  let prompt = `You are ${assistantName}`;
+
+  if (agent?.instructions?.role) {
+    prompt += `. You are an expert in ${agent.instructions.role}`;
   }
 
-  // Enhanced response style guidance with more specific instructions
+  prompt += `. The current date and time is ${currentTime}.`;
+
+  // Agent-specific instructions as primary core
+  if (agent?.instructions?.systemPrompt) {
+    prompt += `
+    # Core Instructions
+    <core_capabilities>
+    ${agent.instructions.systemPrompt}
+    </core_capabilities>`;
+  }
+
+  // User context section (first priority)
+  const userInfo: string[] = [];
+  if (user?.name) userInfo.push(`Name: ${user.name}`);
+  if (user?.email) userInfo.push(`Email: ${user.email}`);
+  if (userPreferences?.profession)
+    userInfo.push(`Profession: ${userPreferences.profession}`);
+
+  if (userInfo.length > 0) {
+    prompt += `
+
+<user_information>
+${userInfo.join("\n")}
+</user_information>`;
+  }
+
+  // Voice-specific capabilities
   prompt += `
-### Communication Style ###
-<response_style>
-- Speak in short, conversational sentences (one or two per reply)
-- Use simple words; avoid jargon unless the user uses it first. 
-- Never use lists, markdown, or code blocks—just speak naturally. 
-- If a request is ambiguous, ask a brief clarifying question instead of guessing.
-${
-  userPreferences?.responseStyleExample
-    ? `
-- **Match your response style to this example**:
+
+<voice_capabilities>
+You excel at conversational voice interactions by:
+- Providing clear, natural spoken responses
+- Using available tools to gather information and complete tasks
+- Adapting communication to user preferences and context
+</voice_capabilities>`;
+
+  // Communication preferences
+  const displayName = userPreferences?.displayName || user?.name;
+  const hasStyleExample = userPreferences?.responseStyleExample;
+
+  if (displayName || hasStyleExample) {
+    prompt += `
+
+<communication_preferences>`;
+
+    if (displayName) {
+      prompt += `
+- Address the user as "${displayName}" when appropriate to personalize interactions`;
+    }
+
+    if (hasStyleExample) {
+      prompt += `
+- Match this communication style and tone:
 """
 ${userPreferences.responseStyleExample}
-- Replicate its tone, complexity, and approach to explanation.
-- Adapt this style naturally to different topics and query complexities.
-"""`.trim()
-    : ""
-}
-</response_style>`.trim();
+"""`;
+    }
+
+    prompt += `
+</communication_preferences>`;
+  }
+
+  // Voice-specific guidelines
+  prompt += `
+
+<voice_interaction_guidelines>
+- Speak in short, conversational sentences (one or two per reply)
+- Use simple words; avoid jargon unless the user uses it first
+- Never use lists, markdown, or code blocks—just speak naturally
+- When using tools, briefly mention what you're doing: "Let me search for that" or "I'll check the weather"
+- If a request is ambiguous, ask a brief clarifying question instead of guessing
+</voice_interaction_guidelines>`;
 
   return prompt.trim();
 };
-
-export const buildProjectInstructionsSystemPrompt = (
-  instructions?: Project["instructions"] | null,
-) => {
-  if (!instructions?.systemPrompt?.trim()) return undefined;
-
-  return `
-### Project Context ###
-<project_instructions>
-- The assistant is supporting a project with the following background and goals.
-- Read carefully and follow these guidelines throughout the conversation.
-${instructions.systemPrompt.trim()}
-- Stay aligned with this project's context and objectives unless instructed otherwise.
-</project_instructions>`.trim();
-};
-
-export const SUMMARIZE_PROMPT = `\n
-You are an expert AI assistant specialized in summarizing and extracting project requirements. 
-Read the following chat history and generate a concise, professional system instruction for a new AI assistant continuing this project. 
-This system message should clearly describe the project's context, goals, and any decisions or requirements discussed, in a way that guides future conversation. 
-Focus on actionable directives and critical details only, omitting any irrelevant dialogue or filler. 
-Ensure the tone is formal and precise. Base your summary strictly on the chat content provided, without adding new information.
-
-(Paste the chat transcript below.)
-`.trim();
 
 export const buildMcpServerCustomizationsSystemPrompt = (
   instructions: Record<string, McpServerCustomizationsPrompt>,
@@ -170,7 +247,7 @@ ${
   }, "");
   if (prompt) {
     return `
-### Tool Usage Guidelines ###
+### Tool Usage Guidelines
 - When using tools, please follow the guidelines below unless the user provides specific instructions otherwise.
 - These customizations help ensure tools are used effectively and appropriately for the current context.
 ${prompt}
@@ -210,7 +287,29 @@ The user has declined to run the tool. Please respond with the following three a
 `.trim();
 
 export const buildToolCallUnsupportedModelSystemPrompt = `
-### Tool Call Limitation ###
+### Tool Call Limitation
 - You are using a model that does not support tool calls. 
 - When users request tool usage, simply explain that the current model cannot use tools and that they can switch to a model that supports tool calling to use tools.
 `.trim();
+
+export const buildThinkingSystemPrompt = (supportToolCall: boolean) => {
+  if (supportToolCall) {
+    return `
+# SEQUENTIAL THINKING MODE ACTIVATED
+
+**YOU MUST use the \`${SequentialThinkingToolName}\` tool for your response.** 
+
+The user has activated thinking mode to see your complete reasoning process in structured steps.
+
+Plan your complete thinking sequence from initial analysis to final conclusion, then use the sequential-thinking tool with all steps included.
+`.trim();
+  }
+  return `
+
+# SEQUENTIAL THINKING MODE - MODEL CHANGE REQUIRED
+
+You have activated Sequential Thinking mode, but the current model does not support tool/function calling.
+
+**Guide the user to switch to a tool-compatible model** to use the \`${SequentialThinkingToolName}\` tool for structured reasoning visualization.
+`.trim();
+};

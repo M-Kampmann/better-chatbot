@@ -12,12 +12,12 @@ export async function POST(request: Request) {
 
   try {
     await saveMcpClientAction(json);
+
+    return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json(
-      { error: error.message || "Failed to save MCP client" },
+      { message: error.message || "Failed to save MCP client" },
       { status: 500 },
     );
   }
-
-  return NextResponse.json({ success: true });
 }

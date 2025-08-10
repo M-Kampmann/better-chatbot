@@ -1,3 +1,7 @@
+import {
+  OAuthClientInformationFull,
+  OAuthTokens,
+} from "@modelcontextprotocol/sdk/shared/auth.js";
 import { Tool } from "ai";
 import { z } from "zod";
 
@@ -38,7 +42,7 @@ export type MCPServerInfo = {
   name: string;
   config: MCPServerConfig;
   error?: unknown;
-  status: "connected" | "disconnected" | "loading";
+  status: "connected" | "disconnected" | "loading" | "authorizing";
   toolInfo: MCPToolInfo[];
 };
 
@@ -210,3 +214,51 @@ export const CallToolResultSchema = z.object({
 });
 
 export type CallToolResult = z.infer<typeof CallToolResultSchema>;
+
+export type McpOAuthSession = {
+  id: string;
+  mcpServerId: string;
+  serverUrl: string;
+  clientInfo?: OAuthClientInformationFull;
+  tokens?: OAuthTokens;
+  codeVerifier?: string;
+  state?: string;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export type McpOAuthRepository = {
+  // 1. Query methods
+
+  // Get session with valid tokens (authenticated)
+  getAuthenticatedSession(
+    mcpServerId: string,
+  ): Promise<McpOAuthSession | undefined>;
+
+  // Get session by OAuth state (for callback handling)
+  getSessionByState(state: string): Promise<McpOAuthSession | undefined>;
+
+  // 2. Create/Update methods
+
+  // Create new OAuth session
+  createSession(
+    mcpServerId: string,
+    data: Partial<McpOAuthSession>,
+  ): Promise<McpOAuthSession>;
+
+  // Update existing session by state
+  updateSessionByState(
+    state: string,
+    data: Partial<McpOAuthSession>,
+  ): Promise<McpOAuthSession>;
+
+  // Save tokens and cleanup incomplete sessions
+  saveTokensAndCleanup(
+    state: string,
+    mcpServerId: string,
+    data: Partial<McpOAuthSession>,
+  ): Promise<McpOAuthSession>;
+
+  // Delete a session by its OAuth state
+  deleteByState(state: string): Promise<void>;
+};

@@ -1,4 +1,5 @@
-// models.ts
+import "server-only";
+
 import { createOllama } from "ollama-ai-provider";
 import { openai } from "@ai-sdk/openai";
 import { google } from "@ai-sdk/google";
@@ -21,14 +22,14 @@ const staticModels = {
     "gpt-4.1": openai("gpt-4.1"),
     "gpt-4.1-mini": openai("gpt-4.1-mini"),
     "4o": openai("gpt-4o"),
-    "4o-mini": openai("gpt-4o-mini", {}),
+    "4o-mini": openai("gpt-4o-mini"),
     "o4-mini": openai("o4-mini", {
       reasoningEffort: "medium",
     }),
   },
   google: {
     "gemini-2.0-flash-lite": google("gemini-2.0-flash-lite"),
-    "gemini-2.5-flash": google("gemini-2.5-flash"),
+    "gemini-2.5-flash": google("gemini-2.5-flash", {}),
     "gemini-2.5-pro": google("gemini-2.5-pro"),
   },
   anthropic: {
@@ -48,6 +49,7 @@ const staticModels = {
   openRouter: {
     "qwen3-8b:free": openrouter("qwen/qwen3-8b:free"),
     "qwen3-14b:free": openrouter("qwen/qwen3-14b:free"),
+    "qwen3-coder": openrouter("qwen/qwen3-coder"),
   },
 };
 
