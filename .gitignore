@@ -63,3 +63,4 @@ certificates
 # uploads directory (file storage)
 uploads/
 /app/uploads
+public/uploads

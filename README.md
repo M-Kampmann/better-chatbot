@@ -1,19 +1,84 @@
 <img width="1184" height="576" alt="thumbnail" loading="lazy" src="https://github.com/user-attachments/assets/d6ba80ff-a62a-4920-b266-85c4a89d6076" />
 
-
 [![MCP Supported](https://img.shields.io/badge/MCP-Supported-00c853)](https://modelcontextprotocol.io/introduction)
 [![Local First](https://img.shields.io/badge/Local-First-blue)](https://localfirstweb.dev/)
 [![Discord](https://img.shields.io/discord/1374047276074537103?label=Discord&logo=discord&color=5865F2)](https://discord.gg/gCRu69Upnp)
 
-[![Deploy with Vercel](https://vercel.com/button)](<https://vercel.com/new/clone?repository-url=https://github.com/cgoinglove/better-chatbot&env=BETTER_AUTH_SECRET&env=OPENAI_API_KEY&env=GOOGLE_GENERATIVE_AI_API_KEY&env=ANTHROPIC_API_KEY&envDescription=BETTER_AUTH_SECRET+is+required+(enter+any+secret+value).+At+least+one+LLM+provider+API+key+(OpenAI,+Claude,+or+Google)+is+required,+but+you+can+add+all+of+them.+See+the+link+below+for+details.&envLink=https://github.com/cgoinglove/better-chatbot/blob/main/.env.example&demo-title=better-chatbot&demo-description=An+Open-Source+Chatbot+Template+Built+With+Next.js+and+the+AI+SDK+by+Vercel.&products=[{"type":"integration","protocol":"storage","productSlug":"neon","integrationSlug":"neon"},{"type":"integration","protocol":"storage","productSlug":"upstash-kv","integrationSlug":"upstash"}]>)
+[![Deploy with Vercel](https://vercel.com/button)](<https://vercel.com/new/clone?repository-url=https://github.com/cgoinglove/better-chatbot&env=BETTER_AUTH_SECRET&env=OPENAI_API_KEY&env=GOOGLE_GENERATIVE_AI_API_KEY&env=ANTHROPIC_API_KEY&envDescription=BETTER_AUTH_SECRET+is+required+(enter+any+secret+value).+At+least+one+LLM+provider+API+key+(OpenAI,+Claude,+or+Google)+is+required,+but+you+can+add+all+of+them.+See+the+link+below+for+details.&envLink=https://github.com/cgoinglove/better-chatbot/blob/main/.env.example&demo-title=better-chatbot&demo-description=An+Open-Source+Chatbot+Template+Built+With+Next.js+and+the+AI+SDK+by+Vercel.&products=[{"type":"integration","protocol":"storage","productSlug":"neon","integrationSlug":"neon"},{"type":"integration","protocol":"storage","productSlug":"upstash-kv","integrationSlug":"upstash"},{"type":"blob"}]>)
 
 🚀 **[Live Demo](https://better-chatbot-demo.vercel.app/)** | See the experience in action in the [preview](#preview) below!
+
+#### Demo Chats
+
+- **MCP Tools Demo:** [Chat with Tools](https://better-chatbot-demo.vercel.app/export/a4820921-8012-496b-8a5d-13757050bafe)
+- **Image Generation Demo:** [Chat with Image Generation](https://better-chatbot-demo.vercel.app/export/452ad745-9efb-49ae-9114-10db15f1b827)
+
+## Quick Start 🚀
+
+> **Get your app running in minutes! No installation or payment required.**
+
+You only need **one AI Provider API Key** (OpenAI, Claude, Gemini, etc.). Everything else runs on free tiers - database, file storage, and hosting.
+
+👉 **[Click this guide to deploy your site with just a few clicks](docs/tips-guides/vercel.md)**
+
+---
+
+## Deployment Options
+
+### Quick Deploy to Coolify ☁️
+
+The easiest way to deploy Better Chatbot with file support:
+
+1. **Connect your repository** to Coolify
+2. **Configure environment variables** in Coolify dashboard
+3. **Deploy** - Coolify handles everything automatically
+
+File storage, database, and all services are automatically configured with persistent volumes.
+
+See [Coolify Deployment Guide](./COOLIFY_DEPLOYMENT.md) for detailed instructions.
+
+### Docker Compose 🐳
+
+Self-host using Docker Compose with full file support:
+
+```bash
+# Clone and setup
+git clone <your-repo> better-chatbot
+cd better-chatbot
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# Start with Docker
+docker-compose up -d --build
+```
+
+See [FILE_SUPPORT_SETUP.md](./FILE_SUPPORT_SETUP.md) for file storage configuration.
+
+### Vercel ☁️
+
+Deploy to Vercel using the deploy button:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/cgoinglove/better-chatbot&env=BETTER_AUTH_SECRET,OPENAI_API_KEY,GOOGLE_GENERATIVE_AI_API_KEY,ANTHROPIC_API_KEY&envDescription=BETTER_AUTH_SECRET+is+required+(enter+any+secret+value).+At+least+one+LLM+provider+API+key+(OpenAI,+Claude,+or+Google)+is+required,+but+you+can+add+all+of+them.+See+the+link+below+for+details.&envLink=https://github.com/cgoinglove/better-chatbot/blob/main/.env.example&demo-title=better-chatbot&demo-description=An+Open-Source+Chatbot+Template+Built+With+Next.js+and+the+AI+SDK+by+Vercel.&products=[{"type":"integration","protocol":"storage","productSlug":"neon","integrationSlug":"neon"},{"type":"integration","protocol":"storage","productSlug":"upstash-kv","integrationSlug":"upstash"}])
+
+> **Note**: Vercel deployment doesn't include file storage by default. For file support, use Docker or Coolify deployment.
+
+## Getting Started
+
+> This project uses [pnpm](https://pnpm.io/) as the recommended package manager.
+
+```bash
+# If you don't have pnpm:
+npm install -g pnpm
+```
 
 **Better Chatbot** - A better open-source AI chatbot for individuals and teams, inspired by ChatGPT, Claude, Grok, and Gemini.
 
 • **Multi-AI Support** - Integrates all major LLMs: OpenAI, Anthropic, Google, xAI, Ollama, and more
 • **Powerful Tools** - MCP protocol, web search, JS/Python code execution, data visualization
 • **File Support** - Upload documents, images, and files with Docker volume storage
+• **Image Generation** - Create and edit images with AI models (OpenAI, Google Gemini, xAI)
 • **Automation** - Custom agents, visual workflows, artifact generation
 • **Collaboration** - Share agents, workflows, and MCP configurations with your team
 • **Voice Assistant** - Realtime voice chat with full MCP tool integration
@@ -21,46 +86,6 @@
 • **Quick Start** - Deploy free with Vercel Deploy button
 
 Built with Vercel AI SDK and Next.js, combining the best features of leading AI services into one platform.
-
-
-### Quick Start 🚀
-
-```bash
-# 1. Clone the repository
-
-git clone https://github.com/cgoinglove/better-chatbot.git
-cd better-chatbot
-
-# 2. (Optional) Install pnpm if you don't have it
-
-npm install -g pnpm
-
-# 3. Install dependencies
-
-pnpm i
-
-# 4. (Optional) Start a local PostgreSQL instance
-
-pnpm docker:pg
-
-# If you already have your own PostgreSQL running, you can skip this step.
-# In that case, make sure to update the PostgreSQL URL in your .env file.
-
-# 5. Enter required information in the .env file
-
-# The .env file is created automatically. Just fill in the required values.
-# For the fastest setup, provide at least one LLM provider's API key (e.g., OPENAI_API_KEY, CLAUDE_API_KEY, GEMINI_API_KEY, etc.) and the PostgreSQL URL you want to use.
-
-# 6. Start the server
-
-pnpm build:local && pnpm start
-
-# (Recommended for most cases. Ensures correct cookie settings.)
-# For development mode with hot-reloading and debugging, you can use:
-# pnpm dev
-```
-
-Open [http://localhost:3000](http://localhost:3000) in your browser to get started.
 
 ## Table of Contents
 
@@ -81,15 +106,16 @@ Open [http://localhost:3000](http://localhost:3000) in your browser to get start
   - [Quick Start (Local Version) 🚀](#quick-start-local-version-)
   - [Environment Variables](#environment-variables)
 - [📘 Guides](#-guides)
-    - [🔌 MCP Server Setup \& Tool Testing](#-mcp-server-setup--tool-testing)
-    - [🐳 Docker Hosting Guide](#-docker-hosting-guide)
-    - [▲ Vercel Hosting Guide](#-vercel-hosting-guide)
-    - [🎯 System Prompts \& Chat Customization](#-system-prompts--chat-customization)
-    - [🔐 OAuth Sign-In Setup](#-oauth-sign-in-setup)
-    - [🕵🏿 Adding openAI like providers](#-adding-openai-like-providers)
-    - [🧪 E2E Testing Guide](#-e2e-testing-guide)
+  - [🔌 MCP Server Setup \& Tool Testing](#-mcp-server-setup--tool-testing)
+  - [🐳 Docker Hosting Guide](#-docker-hosting-guide)
+  - [▲ Vercel Hosting Guide](#-vercel-hosting-guide)
+  - [🗂️ File Storage Drivers](#️-file-storage-drivers)
+  - [🎯 System Prompts \& Chat Customization](#-system-prompts--chat-customization)
+  - [🔐 OAuth Sign-In Setup](#-oauth-sign-in-setup)
+  - [🕵🏿 Adding openAI like providers](#-adding-openai-like-providers)
+  - [🧪 E2E Testing Guide](#-e2e-testing-guide)
 - [💡 Tips](#-tips)
-    - [💬 Temporary Chat Windows](#-temporary-chat-windows)
+  - [💬 Temporary Chat Windows](#-temporary-chat-windows)
 - [🗺️ Roadmap](#️-roadmap)
 - [🙌 Contributing](#-contributing)
 - [💬 Join Our Discord](#-join-our-discord)
@@ -103,7 +129,6 @@ Get a feel for the UX — here's a quick look at what's possible.
 ### 🧩 Browser Automation with Playwright MCP
 
 ![preview](https://github.com/user-attachments/assets/e4febb04-26d5-45da-a7bb-f7d452d333c2)
-
 
 **Example:** Control a web browser using Microsoft's [playwright-mcp](https://github.com/microsoft/playwright-mcp) tool.
 
@@ -145,10 +170,11 @@ Sample prompt:
 **Example:** Create specialized AI agents with custom instructions and tool access.
 
 - Define custom agents with specific system prompts and available tools
-- Easily invoke agents in chat using `@agent_name` 
+- Easily invoke agents in chat using `@agent_name`
 - Build task-specific assistants like a GitHub Manager agent with issue/PR tools and project context
 
 For instance, create a GitHub Manager agent by:
+
 - Providing GitHub tools (issue/PR creation, comments, queries)
 - Adding project details to the system prompt
 - Calling it with `@github_manager` to manage your repository
@@ -205,6 +231,15 @@ Built-in web search powered by [Exa AI](https://exa.ai). Search the web with sem
 - **Free Tier:** 1,000 requests/month at no cost, no credit card required
 - **Easy Setup:** Get your API key instantly at [dashboard.exa.ai](https://dashboard.exa.ai)
 
+#### 🎨 Image Generation
+
+<img width="1034" height="940" loading="lazy" alt="image-generation" src="https://github.com/user-attachments/assets/b081c837-8948-4f4d-a2f4-c8630cf0eaa2" />
+
+Built-in image generation and editing capabilities powered by AI models. Create, edit, and modify images directly in your chats.
+
+- **Supported Operations:** Image generation, editing, and composition
+- **Current Models:** Gemini Nano Banana, OpenAI
+
 #### ⚡️ JS,PYTHON Executor
 
 <img width="1225" alt="js-executor-preview" src="https://github.com/user-attachments/assets/7deed824-e70b-46d4-a294-de20ed4dc869" loading="lazy"/>
@@ -232,47 +267,6 @@ It is a simple JS execution tool.
 Try it out and see what else it can do!
 
 <br/>
-
-## Deployment Options
-
-### Quick Deploy to Coolify ☁️
-
-The easiest way to deploy Better Chatbot with file support:
-
-1. **Connect your repository** to Coolify
-2. **Configure environment variables** in Coolify dashboard
-3. **Deploy** - Coolify handles everything automatically
-
-File storage, database, and all services are automatically configured with persistent volumes.
-
-See [Coolify Deployment Guide](./COOLIFY_DEPLOYMENT.md) for detailed instructions.
-
-### Docker Compose 🐳
-
-Self-host using Docker Compose with full file support:
-
-```bash
-# Clone and setup
-git clone <your-repo> better-chatbot
-cd better-chatbot
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your settings
-
-# Start with Docker
-docker-compose up -d --build
-```
-
-See [FILE_SUPPORT_SETUP.md](./FILE_SUPPORT_SETUP.md) for file storage configuration.
-
-### Vercel ☁️
-
-Deploy to Vercel using the deploy button:
-
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/cgoinglove/better-chatbot&env=BETTER_AUTH_SECRET,OPENAI_API_KEY,GOOGLE_GENERATIVE_AI_API_KEY,ANTHROPIC_API_KEY&envDescription=BETTER_AUTH_SECRET+is+required+(enter+any+secret+value).+At+least+one+LLM+provider+API+key+(OpenAI,+Claude,+or+Google)+is+required,+but+you+can+add+all+of+them.+See+the+link+below+for+details.&envLink=https://github.com/cgoinglove/better-chatbot/blob/main/.env.example&demo-title=better-chatbot&demo-description=An+Open-Source+Chatbot+Template+Built+With+Next.js+and+the+AI+SDK+by+Vercel.&products=[{"type":"integration","protocol":"storage","productSlug":"neon","integrationSlug":"neon"},{"type":"integration","protocol":"storage","productSlug":"upstash-kv","integrationSlug":"upstash"}])
-
-> **Note**: Vercel deployment doesn't include file storage by default. For file support, use Docker or Coolify deployment.
 
 ## Getting Started
 
@@ -319,9 +313,22 @@ pnpm build:local && pnpm start
 # pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to get started.
+Alternative: Use Docker Compose for DB only (run app via pnpm)
 
-<br/>
+```bash
+# Start Postgres only via compose
+# Ensure your .env includes: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB matching POSTGRES_URL
+docker compose -f docker/compose.yml up -d postgres
+
+# Apply migrations
+pnpm db:migrate
+
+
+# Run app locally
+pnpm dev   # or: pnpm build && pnpm start
+```
+
+Open [http://localhost:3000](http://localhost:3000) in your browser to get started.
 
 ### Environment Variables
 
@@ -358,6 +365,19 @@ EXA_API_KEY=your_exa_api_key_here
 
 # Whether to use file-based MCP config (default: false)
 FILE_BASED_MCP_CONFIG=false
+
+# === File Storage ===
+# Vercel Blob is the default storage driver (works in both local dev and production)
+# Pull the token locally with `vercel env pull`
+FILE_STORAGE_TYPE=vercel-blob
+FILE_STORAGE_PREFIX=uploads
+BLOB_READ_WRITE_TOKEN=
+
+# -- S3 (coming soon) --
+# FILE_STORAGE_TYPE=s3
+# FILE_STORAGE_PREFIX=uploads
+# FILE_STORAGE_S3_BUCKET=
+# FILE_STORAGE_S3_REGION=
 
 # (Optional)
 # === OAuth Settings ===
@@ -403,25 +423,13 @@ Step-by-step setup guides for running and configuring better-chatbot.
 
 - How to self-host the chatbot using Docker, including environment configuration.
 
-#### [☁️ Coolify Deployment Guide](./COOLIFY_DEPLOYMENT.md)
-
-- Deploy to Coolify with full file support and automatic volume management
-- Includes environment variable setup, troubleshooting, and scaling tips
-
-#### [🚀 Deployment Checklist](./DEPLOYMENT_CHECKLIST.md)
-
-- Step-by-step checklist for Coolify deployment
-- Pre-deployment requirements and post-deployment verification
-- Troubleshooting guide
-
-#### [🔧 Deploy Script](./coolify-deploy.sh)
-
-- Automated deployment preparation script
-- Run: `./coolify-deploy.sh` (requires Coolify API credentials)
-
 #### [▲ Vercel Hosting Guide](./docs/tips-guides/vercel.md)
 
 - Deploy the chatbot to Vercel with simple setup steps for production use.
+
+#### [🗂️ File Storage Drivers](./docs/tips-guides/file-storage.md)
+
+- Cloud-based file storage with Vercel Blob (default) for seamless uploads in both development and production. S3 support coming soon.
 
 #### [🎯 System Prompts & Chat Customization](./docs/tips-guides/system-prompts-and-customization.md)
 
@@ -446,23 +454,27 @@ Step-by-step setup guides for running and configuring better-chatbot.
 
 - Open lightweight popup chats for quick side questions or testing — separate from your main thread.
 
-#### [📁 File Support & Uploads](./FILE_SUPPORT_SETUP.md)
-
-- Upload documents, images, and files for processing by the chatbot
-- Docker volume storage ensures files persist across container restarts
-- Configurable file size limits and allowed file types
-- See [FILE_SUPPORT_SETUP.md](./FILE_SUPPORT_SETUP.md) for detailed setup instructions
-
 ## 🗺️ Roadmap
 
 Planned features coming soon to better-chatbot:
 
-- [ ] **File Attach & Image Generation**
+- [x] **File Upload & Storage** (Vercel Blob integration)
+- [x] **Image Generation**
 - [ ] **Collaborative Document Editing** (like OpenAI Canvas: user & assistant co-editing)
 - [ ] **RAG (Retrieval-Augmented Generation)**
 - [ ] **Web-based Compute** (with [WebContainers](https://webcontainers.io) integration)
 
 💡 If you have suggestions or need specific features, please create an [issue](https://github.com/cgoinglove/better-chatbot/issues)!
+
+## 💖 Support
+
+If this project has been helpful to you, please consider supporting its development:
+
+- ⭐ **Star** this repository
+- 🐛 **Report** bugs and suggest features
+- 💰 **[Become a sponsor](https://github.com/sponsors/cgoinglove)** to support ongoing development
+
+Your support helps maintain and improve this project. Thank you! 🙏
 
 ## 🙌 Contributing
 
