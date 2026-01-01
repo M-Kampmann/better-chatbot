@@ -43,6 +43,9 @@ ENV HOSTNAME="0.0.0.0"
 
 EXPOSE 3000
 
+# Create uploads directory with proper permissions
+RUN mkdir -p /app/uploads && chown -R nextjs:nextjs /app/uploads
+
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/config/next-config-js/output
 CMD ["node", "server.js"]

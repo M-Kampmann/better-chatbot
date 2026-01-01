@@ -10,13 +10,21 @@ environment:
   - PORT=3000
   - POSTGRES_HOST=postgres
   - POSTGRES_PORT=5432
-  - POSTGRES_DB=mcp_chat
-  # Credentials will be set in Coolify environment variables
+  - POSTGRES_DB=better_chatbot
   # Connection string for Drizzle
-  - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/mcp_chat
-  # App URL will be set in Coolify environment variables
+  - POSTGRES_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/better_chatbot
+  # File upload configuration
+  - UPLOAD_STORAGE_PATH=/app/uploads
+  - MAX_FILE_SIZE=104857600
+  - ALLOWED_FILE_TYPES=.pdf,.doc,.docx,.txt,.jpg,.png,.gif,.md,.csv,.json,.yaml,.yml
+  # App URL
+  - BETTER_AUTH_URL=https://chat.nexus-agency.net
 envFiles:
-  - ./.env
+  - ./.env.docker
 healthCheck:
   path: /api/health
   port: 3000
+# Persistent volumes for file storage and database
+volumes:
+  - uploads_data:/app/uploads
+  - postgres_data:/var/lib/postgresql/data

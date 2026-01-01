@@ -59,3 +59,7 @@ local-data
 .mcp-config.json
 openai-compatible.config.ts
 certificates
+
+# uploads directory (file storage)
+uploads/
+/app/uploads

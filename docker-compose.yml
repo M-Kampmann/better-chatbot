@@ -9,15 +9,22 @@ services:
       - '3000:3000'
     environment:
       - NO_HTTPS=1
-      - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-mcp_chat}
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-better_chatbot}
+      # File upload configuration
+      - UPLOAD_STORAGE_PATH=/app/uploads
+      - MAX_FILE_SIZE=104857600  # 100MB in bytes
     env_file:
-      - .env.docker # docker .env
       - .env
+    volumes:
+      # Mount uploads directory for file storage
+      - uploads_data:/app/uploads
+      # Mount current directory for development (optional)
+      # - .:/app
     dns:
       - 8.8.8.8 # Google's public DNS server
       - 8.8.4.4 # Google's public DNS server
     networks:
-      - mcp_client_network
+      - better-chatbot-network
     depends_on:
       - postgres
     restart: unless-stopped
@@ -25,21 +32,21 @@ services:
   postgres:
     image: postgres:17
     env_file:
-      - .env.docker # docker .env
       - .env
     environment:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-better_chatbot}
     networks:
-      - mcp_client_network
+      - better-chatbot-network
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
   postgres_data:
+  uploads_data:
 
 networks:
-  mcp_client_network:
+  better-chatbot-network:
     driver: bridge

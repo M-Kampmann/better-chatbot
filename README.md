@@ -11,13 +11,14 @@
 
 **Better Chatbot** - A better open-source AI chatbot for individuals and teams, inspired by ChatGPT, Claude, Grok, and Gemini.
 
-• **Multi-AI Support** - Integrates all major LLMs: OpenAI, Anthropic, Google, xAI, Ollama, and more  
-• **Powerful Tools** - MCP protocol, web search, JS/Python code execution, data visualization  
-• **Automation** - Custom agents, visual workflows, artifact generation  
-• **Collaboration** - Share agents, workflows, and MCP configurations with your team  
-• **Voice Assistant** - Realtime voice chat with full MCP tool integration  
-• **Intuitive UX** - Instantly invoke any feature with `@mention`  
-• **Quick Start** - Deploy free with Vercel Deploy button  
+• **Multi-AI Support** - Integrates all major LLMs: OpenAI, Anthropic, Google, xAI, Ollama, and more
+• **Powerful Tools** - MCP protocol, web search, JS/Python code execution, data visualization
+• **File Support** - Upload documents, images, and files with Docker volume storage
+• **Automation** - Custom agents, visual workflows, artifact generation
+• **Collaboration** - Share agents, workflows, and MCP configurations with your team
+• **Voice Assistant** - Realtime voice chat with full MCP tool integration
+• **Intuitive UX** - Instantly invoke any feature with `@mention`
+• **Quick Start** - Deploy free with Vercel Deploy button
 
 Built with Vercel AI SDK and Next.js, combining the best features of leading AI services into one platform.
 
@@ -232,6 +233,47 @@ Try it out and see what else it can do!
 
 <br/>
 
+## Deployment Options
+
+### Quick Deploy to Coolify ☁️
+
+The easiest way to deploy Better Chatbot with file support:
+
+1. **Connect your repository** to Coolify
+2. **Configure environment variables** in Coolify dashboard
+3. **Deploy** - Coolify handles everything automatically
+
+File storage, database, and all services are automatically configured with persistent volumes.
+
+See [Coolify Deployment Guide](./COOLIFY_DEPLOYMENT.md) for detailed instructions.
+
+### Docker Compose 🐳
+
+Self-host using Docker Compose with full file support:
+
+```bash
+# Clone and setup
+git clone <your-repo> better-chatbot
+cd better-chatbot
+
+# Configure environment
+cp .env.example .env
+# Edit .env with your settings
+
+# Start with Docker
+docker-compose up -d --build
+```
+
+See [FILE_SUPPORT_SETUP.md](./FILE_SUPPORT_SETUP.md) for file storage configuration.
+
+### Vercel ☁️
+
+Deploy to Vercel using the deploy button:
+
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https://github.com/cgoinglove/better-chatbot&env=BETTER_AUTH_SECRET,OPENAI_API_KEY,GOOGLE_GENERATIVE_AI_API_KEY,ANTHROPIC_API_KEY&envDescription=BETTER_AUTH_SECRET+is+required+(enter+any+secret+value).+At+least+one+LLM+provider+API+key+(OpenAI,+Claude,+or+Google)+is+required,+but+you+can+add+all+of+them.+See+the+link+below+for+details.&envLink=https://github.com/cgoinglove/better-chatbot/blob/main/.env.example&demo-title=better-chatbot&demo-description=An+Open-Source+Chatbot+Template+Built+With+Next.js+and+the+AI+SDK+by+Vercel.&products=[{"type":"integration","protocol":"storage","productSlug":"neon","integrationSlug":"neon"},{"type":"integration","protocol":"storage","productSlug":"upstash-kv","integrationSlug":"upstash"}])
+
+> **Note**: Vercel deployment doesn't include file storage by default. For file support, use Docker or Coolify deployment.
+
 ## Getting Started
 
 > This project uses [pnpm](https://pnpm.io/) as the recommended package manager.
@@ -361,6 +403,22 @@ Step-by-step setup guides for running and configuring better-chatbot.
 
 - How to self-host the chatbot using Docker, including environment configuration.
 
+#### [☁️ Coolify Deployment Guide](./COOLIFY_DEPLOYMENT.md)
+
+- Deploy to Coolify with full file support and automatic volume management
+- Includes environment variable setup, troubleshooting, and scaling tips
+
+#### [🚀 Deployment Checklist](./DEPLOYMENT_CHECKLIST.md)
+
+- Step-by-step checklist for Coolify deployment
+- Pre-deployment requirements and post-deployment verification
+- Troubleshooting guide
+
+#### [🔧 Deploy Script](./coolify-deploy.sh)
+
+- Automated deployment preparation script
+- Run: `./coolify-deploy.sh` (requires Coolify API credentials)
+
 #### [▲ Vercel Hosting Guide](./docs/tips-guides/vercel.md)
 
 - Deploy the chatbot to Vercel with simple setup steps for production use.
@@ -387,6 +445,13 @@ Step-by-step setup guides for running and configuring better-chatbot.
 #### [💬 Temporary Chat Windows](./docs/tips-guides/temporary_chat.md)
 
 - Open lightweight popup chats for quick side questions or testing — separate from your main thread.
+
+#### [📁 File Support & Uploads](./FILE_SUPPORT_SETUP.md)
+
+- Upload documents, images, and files for processing by the chatbot
+- Docker volume storage ensures files persist across container restarts
+- Configurable file size limits and allowed file types
+- See [FILE_SUPPORT_SETUP.md](./FILE_SUPPORT_SETUP.md) for detailed setup instructions
 
 ## 🗺️ Roadmap
 
