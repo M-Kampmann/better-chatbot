@@ -10,7 +10,9 @@ services:
     environment:
       - NO_HTTPS=1
       - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-better_chatbot}
-      # File upload configuration
+      # File storage configuration (use local filesystem instead of Vercel Blob)
+      - FILE_STORAGE_TYPE=local
+      - FILE_STORAGE_PREFIX=uploads
       - UPLOAD_STORAGE_PATH=/app/uploads
       - MAX_FILE_SIZE=104857600  # 100MB in bytes
     env_file:

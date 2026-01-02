@@ -74,15 +74,25 @@ export async function checkStorageAction(): Promise<StorageCheckResult> {
     return { isValid: true };
   }
 
-  // 3. Validate storage driver
-  if (!["vercel-blob", "s3"].includes(storageDriver)) {
+  // 3. Check local storage configuration
+  if (storageDriver === "local") {
+    const _storagePath = process.env.UPLOAD_STORAGE_PATH || "./uploads";
+    // Local storage is always valid, just needs a writable directory
+    return {
+      isValid: true,
+    };
+  }
+
+  // 4. Validate storage driver
+  if (!["vercel-blob", "s3", "local"].includes(storageDriver)) {
     return {
       isValid: false,
       error: `Invalid storage driver: ${storageDriver}`,
       solution:
         "FILE_STORAGE_TYPE must be one of:\n" +
-        "- 'vercel-blob' (default)\n" +
-        "- 's3' (coming soon)",
+        "- 'local' (default for non-Vercel deployments)\n" +
+        "- 'vercel-blob' (for Vercel deployments)\n" +
+        "- 's3' (for AWS S3 or S3-compatible storage)",
     };
   }
 
