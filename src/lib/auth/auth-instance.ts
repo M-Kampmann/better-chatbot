@@ -39,6 +39,13 @@ const options = {
     nextCookies(),
   ],
   baseURL: process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_BASE_URL,
+  trustedOrigins: [
+    "https://chat.nexus-agency.net",
+    ...(process.env.BETTER_AUTH_URL ? [process.env.BETTER_AUTH_URL] : []),
+    ...(process.env.NEXT_PUBLIC_BASE_URL
+      ? [process.env.NEXT_PUBLIC_BASE_URL]
+      : []),
+  ],
   user: {
     changeEmail: {
       enabled: true,
