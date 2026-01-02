@@ -114,10 +114,12 @@ const options = {
   socialProviders: socialAuthenticationProviders,
 } satisfies BetterAuthOptions;
 
+console.log("Initializing Better Auth instance...");
 export const auth = betterAuth({
   ...options,
   plugins: [...(options.plugins ?? [])],
 });
+console.log("Better Auth instance initialized successfully.");
 
 export const getSession = async () => {
   try {

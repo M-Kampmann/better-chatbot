@@ -355,7 +355,7 @@ BETTER_AUTH_URL=
 
 # === Database ===
 # If you don't have PostgreSQL running locally, start it with: pnpm docker:pg
-POSTGRES_URL=postgres://your_username:your_password@localhost:5432/your_database_name
+POSTGRES_URL=postgres://postgres:your_password@localhost:5432/your_database_name
 
 # (Optional)
 # === Tools ===
