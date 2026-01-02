@@ -11,7 +11,7 @@ export const runtime = "nodejs";
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { path: string[] } },
+  { params }: { params: Promise<{ path: string[] }> },
 ) {
   try {
     // Only serve files for local storage
@@ -22,7 +22,8 @@ export async function GET(
       );
     }
 
-    const key = params.path.join("/");
+    const { path } = await params;
+    const key = path.join("/");
 
     if (!key) {
       return NextResponse.json(
@@ -42,7 +43,8 @@ export async function GET(
     }
 
     // Return file with appropriate headers
-    return new NextResponse(buffer, {
+    // Convert Buffer to Uint8Array for NextResponse compatibility
+    return new NextResponse(new Uint8Array(buffer), {
       status: 200,
       headers: {
         "Content-Type": metadata.contentType,

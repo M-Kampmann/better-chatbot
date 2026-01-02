@@ -76,7 +76,6 @@ export async function checkStorageAction(): Promise<StorageCheckResult> {
 
   // 3. Check local storage configuration
   if (storageDriver === "local") {
-    const _storagePath = process.env.UPLOAD_STORAGE_PATH || "./uploads";
     // Local storage is always valid, just needs a writable directory
     return {
       isValid: true,
